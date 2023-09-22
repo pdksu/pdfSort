@@ -6,7 +6,6 @@ from pyzbar.pyzbar import decode
 from PIL import Image, ImageDraw, ImageFilter
 from string import ascii_uppercase
 from statistics import NormalDist
-import yaml
 import zbar
 import qreader
 
