@@ -132,7 +132,7 @@ class ArucoBubbleSheet:
         rot_angle = atan(vr[1], vr[0])
         angles = np.array([atan(pt[1],pt[0]) for pt in pts-ctr])
         print(f"orientation: angle list {180*angles/np.pi}. {angles.argsort()} | {rot_angle*180/np.pi}")
-        return ( 180*rot_angle/np.pi, 1)
+        return (180*rot_angle/np.pi, 1)
 
     def aruco_find(self, image: Image, verbose: bool = False): # **DetectorParameters are DetectorParameters
         """

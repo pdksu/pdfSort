@@ -10,6 +10,7 @@ Flask==2.3.3
 fonttools==4.42.1
 gcloud==0.18.3
 googleapis-common-protos==1.60.0
+gunicorn==21.2.0
 httplib2==0.22.0
 idna==3.4
 itsdangerous==2.1.2
@@ -36,7 +37,6 @@ pypng==0.20220715.0
 python-dateutil==2.8.2
 pytz==2023.3.post1
 PyYAML==6.0.1
-pyzbar==0.1.9
 qrcode==7.4.2
 qrdet==2.3
 qreader==3.9

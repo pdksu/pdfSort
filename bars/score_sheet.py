@@ -97,7 +97,6 @@ def annotate_image(img, text):
     padding = 5
     draw.rectangle([x - padding, y - padding, x + text_width + padding, y + text_height + padding], fill=(255, 255, 255, 128))
 
-    
     # Draw the text on the image
     draw.text((x, y), text, font=font, fill=(90, 150, 90, 100))  # Change fill color if needed
 
@@ -108,7 +107,7 @@ def insert_image_to_pdf(image, pdf_file):
     img_byte_arr = io.BytesIO()
     image.save(img_byte_arr, format='PDF')
     img_byte_arr.seek(0)
-    
+
     # Check if PDF exists
     if not os.path.exists(pdf_file):
         with open(pdf_file, "wb") as f:
@@ -118,13 +117,13 @@ def insert_image_to_pdf(image, pdf_file):
     # If PDF exists, insert the image as the first page
     pdf_writer = PyPDF2.PdfWriter()
     pdf_reader = PyPDF2.PdfReader(pdf_file)
-    
+
     # Add our image as the first page
     pdf_writer.add_page(PyPDF2.PdfReader(img_byte_arr).pages[0])
 
     # Add existing PDF pages
     for page_num in range(len(pdf_reader.pages)):
-        pdf_writer.add_page(pdf_reader.pages[0])
+        pdf_writer.add_page(pdf_reader.pages[page_num])
 
     # Write the combined PDF
     with open(pdf_file, "wb") as f:
@@ -155,7 +154,6 @@ class bubble_sheet():
                 return True, bubbles
         return False, {}
 
-
 Q_ITEMS_DEFAULT =   {"student" : {"items" : {"ID" : {(i, 0) : i for i in range(10)},
                     "SECTION" : {(19+2*i, 0) : 2*(1+i) for i in range(4)},
                     "FIRST_INIT" : {(i, 1 ) : ascii_uppercase[i] for i in range(26)},
@@ -182,17 +180,17 @@ Q_ITEMS_DEFAULT =   {"student" : {"items" : {"ID" : {(i, 0) : i for i in range(1
 #                                     "grid" : (11, 1)
 #                                    },
                 "self_assessment4" : {"items" : {"score" : {(i, 0) : i for i in range(5)}},
-                                     "bounds" : { "tl" : (9 , (np.max, np.min)), # top left
-                                                  "bl" : (9 , (np.max, np.max)), # bottom left
-                                                  "br" : (10 , (np.min, np.max)), # bottom right
-                                                  "tr" : (10, (np.min, np.min)) }, # top right
+                                     "bounds" : { "tl" : (7 , (np.max, np.min)), # top left
+                                                  "bl" : (7 , (np.max, np.max)), # bottom left
+                                                  "br" : (8 , (np.min, np.max)), # bottom right
+                                                  "tr" : (8, (np.min, np.min)) }, # top right
                                      "grid" : (5, 1)
                                     },
                 "assessment4" : {"items" : {"score" : {(i, 0) : i for i in range(5)}},
-                                     "bounds" : { "tl" : (11, (np.max, np.min)), # top left
-                                                  "bl" : (11, (np.max, np.max)), # bottom left
-                                                  "br" : (12 , (np.min, np.max)), # bottom right
-                                                  "tr" : (12 , (np.min, np.min)) }, # top right
+                                     "bounds" : { "tl" : (5, (np.max, np.min)), # top left
+                                                  "bl" : (5, (np.max, np.max)), # bottom left
+                                                  "br" : (6 , (np.min, np.max)), # bottom right
+                                                  "tr" : (6 , (np.min, np.min)) }, # top right
                                      "grid" : (5, 1)
                                     },
 }
@@ -247,21 +245,27 @@ else:
 def display_choices(likely_student, page, students):
     if likely_student.shape[0] == 1:
         return likely_student
-    
+
     page.show()
-    
+
+    # Extract relevant column names
+    first_name_col = [col for col in students.columns if col.startswith('First')][0]  # Assuming there's only one column that starts with 'First'
+    last_name_col = [col for col in students.columns if col.startswith('Last')][0]  # Assuming there's only one column that starts with 'Last'
+    page_index_col = [col for col in students.columns if col.startswith('page')][0]  # Assuming there's only one column that starts with 'Last'
     # Helper function to display choices
-    def show_choices(possible_choices):
+    def show_choices(possible_choices, alternative):
         for index, (_, student) in enumerate(possible_choices.iterrows(), 1):
-            print(f"({index}) {' '.join(map(str, student.values))}")
+            # Printing only specific fields
+            print(f"({index}) {student[first_name_col]} {student[last_name_col]} {student[page_index_col]}")
+        print(alternative)
 
     # Initial display of all likely student choices
-    show_choices(likely_student)
-
-    print("(s) Spell")
+    show_choices(likely_student, "(s) Spell")
 
     # Variable to store the current substring of the name being spelled
     current_string = ""
+
+    first_name_col = [col for col in students.columns if col.startswith('First')][0]  # Assuming there's only one column that starts with 'First'
 
     # Collect user input until a valid choice is made
     while True:
@@ -272,31 +276,33 @@ def display_choices(likely_student, page, students):
 
             current_string = ""
             while True:
-            # Get single key stroke
+                # Get single key stroke
                 letter = get_key()
+                print(f"got {letter}, {ord(letter)}", flush=True)
 
                 # Use ESC key as exit mechanism, ASCII value for ESC is 27
                 if ord(letter) == 27:
                     break
 
                 current_string += letter
-                print(current_string, end='', flush=True)
-            
-                
+                print(f"current string = {current_string}", end='', flush=True)
+
                 # Filter students based on the current substring
-                matching_students = students[students[col.startswith('First')].str.startswith(current_string, case=False, na=False)]
-                
+                matching_students = students[students[first_name_col].str.lower().str.startswith(current_string.lower(), na=False)]
+
                 if matching_students.empty:
                     print("No matches found. Try again.")
                     current_string = current_string[:-1]  # Remove the last letter
                     continue
-                
-                if matching_students.shape[0] < 10:
-                    show_choices(matching_students)
+
+                if matching_students.shape[0] < 5:
+                    print("")
+                    show_choices(matching_students, "")
                     break  # Breaks out of the inner while loop
 
                 print(f"{matching_students.shape[0]} matches found. Keep typing...")
-                
+
+            likely_student = matching_students  # Reset the likely_student DataFrame
             continue  # This continues the outer loop
 
         if choice.isdigit() and 1 <= int(choice) <= likely_student.shape[0]:
@@ -305,13 +311,11 @@ def display_choices(likely_student, page, students):
 
         print("Invalid choice. Please try again.")
 
-
 if __name__ == '__main__':
-    
-    # --- load studen list ------
-    results_dir = "/Users/peterkaplan/Code/group_maker/csv_out/"
-    return_dir = "/Users/peterkaplan/Code/group_maker/pdf_out/"
-    student_file = "/Users/peterkaplan/Code/group_maker/bars/students_from_classroom.csv"
+    # --- load student list ------
+    results_dir = "/Users/peterkaplan/Code/pdfSort/csv_out/"
+    return_dir = "/Users/peterkaplan/Code/pdfSort/pdf_out/"
+    student_file = "/Users/peterkaplan/Code/pdfSort/bars/students_from_classroom.csv"
     students = pd.read_csv(student_file)
     if 'pageId' not in students.columns:
         raise KeyError(f"Missing Column: pageId from file {student_file}")
@@ -325,13 +329,14 @@ if __name__ == '__main__':
     # ----- get ready to process .pdf file ----
     scanneds= ["hw abc.pdf",
      "Do now abc1.pdf",
-     "donow dim anal2 table.pdf",
-     "donow volume 1.pdf"]
-    scanned_work = scanneds[2]
+     "donow dim anal2 table.pdf", #different aruco
+     "donow volume 1.pdf",
+     "hw2 dim anal.pdf",
+     "do now three sec.pdf"]
+    scanned_work = scanneds[5]
     p = Pdf_serve(scanned_work, scale=5)
     i = 0
     aruco_reader = ArucoBubbleSheet(Q_ITEMS_DEFAULT)
-
 
     # ------ page loop --------
     reprocess_page_list = []
@@ -344,9 +349,11 @@ if __name__ == '__main__':
         out_csvf = results_dir+page_title+".csv"
         if not os.path.exists(out_csvf):
             with open(out_csvf,"w") as f:
-               f.write(",".join(["First","Last","Section","SelfA","ID","Score"])) 
+               f.write(",".join(["First","Last","Section","SelfA","ID","Score"])+"\n") 
 
         i += 1
+        if i<64:
+            continue
         f_page = cv2.cvtColor(np.array(page), cv2.COLOR_BGR2GRAY)
         f_page = cv2.adaptiveThreshold(f_page, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 75, 2)
 #        f_page = cv2.GaussianBlur(f_page, (7, 7), 0) #makes finding worse
@@ -361,7 +368,6 @@ if __name__ == '__main__':
                       best_v(student['ID']) + best_v(student['SECTION'])
             student["ID"] = {str(k):v for k,v in student["ID"].items()}
             student["SECTION"] = {str(k):v for k,v in student["SECTION"].items()}
-
         except KeyError:
             reprocess_page_list.append(i)
             marked_page.show()
@@ -374,11 +380,11 @@ if __name__ == '__main__':
         most_likely_p = min(which_student.p_val)
         likely_student = which_student[which_student.p_val <= 10*most_likely_p]
         try:
-            likely_student = display_choices(likely_student, page).iloc[0] # does nothing if only one choice
+            likely_student = display_choices(likely_student, page, students).iloc[0] # does nothing if only one choice
         except AttributeError:
             continue
         try:
-            print(f'{i+1}/{p.npages}: {student_key}, {likely_student[["First Name", "Last Name", "Section", "ID"]]}')
+            print(f'++{i+1}/{p.npages}: {student_key}, {likely_student[["First Name", "Last Name", "Section", "ID"]]}++')
         except TypeError:
             continue 
         results = {key: str(best_v(value["score"])) for key, value in bubble_results.items() if key != "student"}
@@ -390,7 +396,10 @@ if __name__ == '__main__':
                 results["self_assessment4"]="_"
             else:
                 results["assessment4"] = "_"
-        found_entries[page_title][likely_student.pageId]=likely_student.p_val
+        try:
+            found_entries[page_title][likely_student.pageId]=likely_student.p_val
+        except AttributeError:
+            found_entries[page_title][likely_student.pageId]=1e-6
         with open(out_csvf,"a") as f:
             out_str = ",".join([likely_student["First Name"], likely_student["Last Name"], str(likely_student["Section"]),
                               likely_student["pageId"], results["self_assessment4"], 
@@ -399,5 +408,5 @@ if __name__ == '__main__':
             f.write(out_str+"\n")
         out_str = f'{likely_student["First Name"]} {likely_student["Last Name"]}, section {str(likely_student["Section"])}, ID: {str(likely_student["ID"])}, self={results["self_assessment4"]}, instructor={results["assessment4"]} '
         marked_page = annotate_image(marked_page, out_str)
-        out_pdff = return_dir+ likely_student["pageId"]+"_MP1.pdf"
+        out_pdff = return_dir + likely_student["pageId"]+"_MP1.pdf"
         insert_image_to_pdf(marked_page, out_pdff)
