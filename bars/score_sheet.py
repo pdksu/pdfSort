@@ -61,6 +61,8 @@ class Pdf_serve():
         self.npages = len(self.reader)
         self.page_index = 0
         self.scale = scale
+        self.default_page_set = False
+        self.default_page = None
 
     def next_qr_page(self):
         scale_matrix = fitz.Matrix(self.scale, self.scale)
@@ -71,7 +73,15 @@ class Pdf_serve():
             if pixmap:
                 image = pixmap_to_pil(pixmap)
                 qrc_success, qrc = page_qr(image)
-                yield (qrc, image) if qrc_success else (None, image)
+                if not qrc_success:
+                    if not self.default_page_set:
+                        default_pagename = input("No QR code found, enter default for this scan file (- for skip page)")
+                        print(f"New default: {default_pagename}")
+                        self.default_page_set = True
+                        if default_pagename[0] != "-":
+                            self.default_page = default_pagename
+                    qrc = (self.default_page, None, None) # None by default or if leading char is -
+                yield (qrc, image)
             self.page_index += 1
 
 def annotate_image(img, text):
@@ -102,7 +112,7 @@ def annotate_image(img, text):
 
     return img
 
-def insert_image_to_pdf(image, pdf_file):
+def insert_image_to_pdf(image, pdf_file, offset = 0):
     # Convert PIL image to PDF
     img_byte_arr = io.BytesIO()
     image.save(img_byte_arr, format='PDF')
@@ -114,16 +124,18 @@ def insert_image_to_pdf(image, pdf_file):
             f.write(img_byte_arr.read())
         return
 
-    # If PDF exists, insert the image as the first page
+    # If PDF exists, insert the image as page # offset (from 0) page
     pdf_writer = PyPDF2.PdfWriter()
     pdf_reader = PyPDF2.PdfReader(pdf_file)
-
-    # Add our image as the first page
-    pdf_writer.add_page(PyPDF2.PdfReader(img_byte_arr).pages[0])
-
-    # Add existing PDF pages
-    for page_num in range(len(pdf_reader.pages)):
-        pdf_writer.add_page(pdf_reader.pages[page_num])
+    added = 0
+    for page_num in range(len(pdf_reader.pages)+1):
+        if page_num == offset:
+            # Add our image
+            pdf_writer.add_page(PyPDF2.PdfReader(img_byte_arr).pages[0])
+            added = 1
+        else:
+            # Add existing PDF pages
+            pdf_writer.add_page(pdf_reader.pages[page_num - added])
 
     # Write the combined PDF
     with open(pdf_file, "wb") as f:
@@ -165,34 +177,34 @@ Q_ITEMS_DEFAULT =   {"student" : {"items" : {"ID" : {(i, 0) : i for i in range(1
                                   },
                     "grid" : (26, 3)
                             },
-#                "self_assessment10" : {"items" : {"score" : {(i, 0) : i+1 for i in range(10)}},
-#                                     "bounds" : { "tl" : (5 , (np.max, np.min)), # top left
-#                                                  "bl" : (5 , (np.max, np.max)), # bottom left
-#                                                  "br" : (6 , (np.min, np.max)), # bottom right
-#                                                  "tr" : (6 , (np.min, np.min)) }, # top right
-#                                     "grid" : (11, 1)
-#                                    },
-#                "assessment10" : {"items" : {"score" : {(i, 0) : i+1 for i in range(10)}},
-#                                     "bounds" : { "tl" : (7 , (np.max, np.min)), # top left
-#                                                  "bl" : (7 , (np.max, np.max)), # bottom left
-#                                                  "br" : (8 , (np.min, np.max)), # bottom right
-#                                                  "tr" : (8 , (np.min, np.min)) }, # top right
-#                                     "grid" : (11, 1)
-#                                    },
-                "self_assessment4" : {"items" : {"score" : {(i, 0) : i for i in range(5)}},
-                                     "bounds" : { "tl" : (7 , (np.max, np.min)), # top left
-                                                  "bl" : (7 , (np.max, np.max)), # bottom left
-                                                  "br" : (8 , (np.min, np.max)), # bottom right
-                                                  "tr" : (8, (np.min, np.min)) }, # top right
-                                     "grid" : (5, 1)
-                                    },
-                "assessment4" : {"items" : {"score" : {(i, 0) : i for i in range(5)}},
-                                     "bounds" : { "tl" : (5, (np.max, np.min)), # top left
-                                                  "bl" : (5, (np.max, np.max)), # bottom left
-                                                  "br" : (6 , (np.min, np.max)), # bottom right
-                                                  "tr" : (6 , (np.min, np.min)) }, # top right
-                                     "grid" : (5, 1)
-                                    },
+               "self_assessment10" : {"items" : {"score" : {(i, 0) : i for i in range(11)}},
+                                    "bounds" : { "tl" : (7 , (np.max, np.min)), # top left
+                                                 "bl" : (7 , (np.max, np.max)), # bottom left
+                                                 "br" : (8 , (np.min, np.max)), # bottom right
+                                                 "tr" : (8 , (np.min, np.min)) }, # top right
+                                    "grid" : (11, 1)
+                                   },
+               "assessment10" : {"items" : {"score" : {(i, 0) : i for i in range(11)}},
+                                    "bounds" : { "tl" : (5 , (np.max, np.min)), # top left
+                                                 "bl" : (5 , (np.max, np.max)), # bottom left
+                                                 "br" : (6 , (np.min, np.max)), # bottom right
+                                                 "tr" : (6 , (np.min, np.min)) }, # top right
+                                    "grid" : (11, 1)
+                                   },
+                 "self_assessment4" : {"items" : {"score" : {(i, 0) : i for i in range(5)}},
+                                      "bounds" : { "tl" : (11 , (np.max, np.min)), # top left
+                                                   "bl" : (11 , (np.max, np.max)), # bottom left
+                                                   "br" : (12 , (np.min, np.max)), # bottom right
+                                                   "tr" : (12, (np.min, np.min)) }, # top right
+                                      "grid" : (5, 1)
+                                     },
+                 "assessment4" : {"items" : {"score" : {(i, 0) : i for i in range(5)}},
+                                      "bounds" : { "tl" : (9, (np.max, np.min)), # top left
+                                                   "bl" : (9, (np.max, np.max)), # bottom left
+                                                   "br" : (10, (np.min, np.max)), # bottom right
+                                                   "tr" : (10, (np.min, np.min)) }, # top right
+                                      "grid" : (5, 1)
+                                     },
 }
 for item in Q_ITEMS_DEFAULT.keys():
     Q_ITEMS_DEFAULT[item]["set"] = set([b[0] for b in Q_ITEMS_DEFAULT[item]["bounds"].values()])
@@ -332,8 +344,10 @@ if __name__ == '__main__':
      "donow dim anal2 table.pdf", #different aruco
      "donow volume 1.pdf",
      "hw2 dim anal.pdf",
-     "do now three sec.pdf"]
-    scanned_work = scanneds[5]
+     "do now three sec.pdf",
+     "do now sf2.pdf",
+     "graph check1.pdf"]
+    scanned_work = scanneds[7]
     p = Pdf_serve(scanned_work, scale=5)
     i = 0
     aruco_reader = ArucoBubbleSheet(Q_ITEMS_DEFAULT)
@@ -341,72 +355,78 @@ if __name__ == '__main__':
     # ------ page loop --------
     reprocess_page_list = []
     found_entries = {}
+    offset = 0
     print("page: #/MAX: key, self, instructor")
-    for (page_title, qr_loc, _), page in p.next_qr_page():
-        print(page_title)
-        if page_title not in found_entries:
-            found_entries[page_title] = {}
-        out_csvf = results_dir+page_title+".csv"
-        if not os.path.exists(out_csvf):
-            with open(out_csvf,"w") as f:
-               f.write(",".join(["First","Last","Section","SelfA","ID","Score"])+"\n") 
+    for (page_title, qr_loc, _), page in p.next_qr_page():  # returns default page title for run which can be reset by user otherwise None
+        if page_title:
+            offset = 0
+            print(page_title)
+            if page_title not in found_entries:
+                found_entries[page_title] = {}
+            out_csvf = results_dir+page_title+".csv"
+            if not os.path.exists(out_csvf):
+                with open(out_csvf,"w") as f:
+                    f.write(",".join(["First","Last","Section","pageId","ID","Score","SelfA"])+"\n") 
 
-        i += 1
-        if i<64:
-            continue
-        f_page = cv2.cvtColor(np.array(page), cv2.COLOR_BGR2GRAY)
-        f_page = cv2.adaptiveThreshold(f_page, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 75, 2)
-#        f_page = cv2.GaussianBlur(f_page, (7, 7), 0) #makes finding worse
-        f_page = cv2.dilate(f_page, np.ones((3, 3), np.uint8))
-        aruco_dict = aruco_reader.aruco_find(f_page)
-        if not aruco_dict:
-            aruco_dict = None
-        bubble_results, marked_page = aruco_reader.analyze_bubbles(page, ad = aruco_dict)
-        try:
-            student = bubble_results['student']
-            student_key = best_v(student['FIRST_INIT']) + best_v(student['LAST_INIT']) +\
-                      best_v(student['ID']) + best_v(student['SECTION'])
-            student["ID"] = {str(k):v for k,v in student["ID"].items()}
-            student["SECTION"] = {str(k):v for k,v in student["SECTION"].items()}
-        except KeyError:
-            reprocess_page_list.append(i)
-            marked_page.show()
-            print(f"::::{i}/{p.npages}: ({page.width}, {page.height}) {page_title[0]} {[k for k in aruco_dict.keys()]} {bubble_results} ::::::")
-            continue
-        which_student = students[["pageId","First Name","Last Name","Section", "ID"]].copy()
-        which_student["p_val"] = 1.0
-        which_student.p_val = which_student.apply(lambda row: update_p_val(row, student, col_name="pageId"), axis=1)
-        which_student.p_val = which_student.apply(lambda row: row['p_val'] if row['pageId'] not in found_entries[page_title] else row['p_val']*100, axis=1)
-        most_likely_p = min(which_student.p_val)
-        likely_student = which_student[which_student.p_val <= 10*most_likely_p]
-        try:
-            likely_student = display_choices(likely_student, page, students).iloc[0] # does nothing if only one choice
-        except AttributeError:
-            continue
-        try:
-            print(f'++{i+1}/{p.npages}: {student_key}, {likely_student[["First Name", "Last Name", "Section", "ID"]]}++')
-        except TypeError:
-            continue 
-        results = {key: str(best_v(value["score"])) for key, value in bubble_results.items() if key != "student"}
-        print(results)
-        try:
-          outstr = f'{likely_student["First Name"]}, {likely_student["Last Name"]}, {likely_student["Section"]}, {likely_student["pageId"]}, {results["self_assessment4"]}, {likely_student["ID"]}, {results["assessment4"]}'
-        except KeyError as ke:
-            if 'self' in str(ke):
-                results["self_assessment4"]="_"
-            else:
-                results["assessment4"] = "_"
-        try:
-            found_entries[page_title][likely_student.pageId]=likely_student.p_val
-        except AttributeError:
-            found_entries[page_title][likely_student.pageId]=1e-6
-        with open(out_csvf,"a") as f:
-            out_str = ",".join([likely_student["First Name"], likely_student["Last Name"], str(likely_student["Section"]),
-                              likely_student["pageId"], results["self_assessment4"], 
-                              str(likely_student["ID"]), str(results["assessment4"])])
-            print(out_str)
-            f.write(out_str+"\n")
-        out_str = f'{likely_student["First Name"]} {likely_student["Last Name"]}, section {str(likely_student["Section"])}, ID: {str(likely_student["ID"])}, self={results["self_assessment4"]}, instructor={results["assessment4"]} '
-        marked_page = annotate_image(marked_page, out_str)
-        out_pdff = return_dir + likely_student["pageId"]+"_MP1.pdf"
-        insert_image_to_pdf(marked_page, out_pdff)
+            i += 1
+            f_page = cv2.cvtColor(np.array(page), cv2.COLOR_BGR2GRAY)
+            f_page = cv2.adaptiveThreshold(f_page, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 75, 2)
+    #        f_page = cv2.GaussianBlur(f_page, (7, 7), 0) #makes finding worse
+            f_page = cv2.dilate(f_page, np.ones((3, 3), np.uint8))
+            aruco_dict = aruco_reader.aruco_find(f_page)
+            if not aruco_dict:
+                aruco_dict = None
+            bubble_results, marked_page = aruco_reader.analyze_bubbles(page, ad = aruco_dict)
+            try:
+                student = bubble_results['student']
+                student_key = best_v(student['FIRST_INIT']) + best_v(student['LAST_INIT']) +\
+                        best_v(student['ID']) + best_v(student['SECTION'])
+                student["ID"] = {str(k):v for k,v in student["ID"].items()}
+                student["SECTION"] = {str(k):v for k,v in student["SECTION"].items()}
+            except KeyError:
+                reprocess_page_list.append(i)
+                marked_page.show()
+                print(f"::::{i}/{p.npages}: ({page.width}, {page.height}) {page_title[0]} {[k for k in aruco_dict.keys()]} {bubble_results} ::::::")
+                continue
+            which_student = students[["pageId","First Name","Last Name","Section", "ID"]].copy()
+            which_student["p_val"] = 1.0
+            which_student.p_val = which_student.apply(lambda row: update_p_val(row, student, col_name="pageId"), axis=1)
+            which_student.p_val = which_student.apply(lambda row: row['p_val'] if row['pageId'] not in found_entries[page_title] else row['p_val']*100, axis=1)
+            most_likely_p = min(which_student.p_val)
+            likely_student = which_student[which_student.p_val <= 10*most_likely_p]
+            try:
+                likely_student = display_choices(likely_student, page, students).iloc[0] # does nothing if only one choice
+            except AttributeError:
+                continue
+            try:
+                print(f'++{i+1}/{p.npages}: {student_key}, {likely_student[["First Name", "Last Name", "Section", "ID"]]}++')
+            except TypeError:
+                continue 
+            results = {key: str(best_v(value["score"])) for key, value in bubble_results.items() if key != "student"}
+            print(results)
+            def get_values_for_prefix(d, prefix, default="_"):
+                """Retrieve the values of all keys that start with a given prefix."""
+                values = [d[key] for key in d if key.startswith(prefix)]
+                return values if values else [default]
+
+            try:
+                assessment_vals = get_values_for_prefix(results, "assessment")
+                self_assessment_vals = get_values_for_prefix(results, "self_assessment")
+
+                assessments_str = ", ".join(assessment_vals)
+                self_assessments_str = ", ".join(self_assessment_vals)
+
+                outstr = f'{likely_student["First Name"]}, {likely_student["Last Name"]}, {likely_student["Section"]}, {likely_student["pageId"]}, {likely_student["ID"]}, {assessments_str}, {self_assessments_str}'
+            except KeyError:
+                pass
+            try:
+                found_entries[page_title][likely_student.pageId]=likely_student.p_val
+            except AttributeError:
+                found_entries[page_title][likely_student.pageId]=1e-6
+            with open(out_csvf,"a") as f:
+                print(outstr)
+                f.write(outstr+"\n")
+            marked_page = annotate_image(marked_page, outstr)
+            out_pdff = return_dir + likely_student["pageId"]+"_MP1.pdf"
+        insert_image_to_pdf(marked_page, out_pdff, offset = offset) # if no QR code, just stick it where the last page went.
+        offset += 1
