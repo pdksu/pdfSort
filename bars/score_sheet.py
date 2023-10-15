@@ -24,6 +24,7 @@ import fitz #MuPDF
 import sys
 from string import ascii_uppercase
 from bfind import ArucoBubbleSheet, page_qr
+from pathlib import Path
 
 # Define paths
 ROOT_PATH = os.path.dirname(os.path.abspath(__file__))
@@ -332,13 +333,9 @@ if __name__ == '__main__':
     if 'pageId' not in students.columns:
         raise KeyError(f"Missing Column: pageId from file {student_file}")
     print(students.columns)
-#    students["SchoolId"] = students.ID 
-#    students.ID = students.ID % 10
-#    students["FIRST_INIT"] = students[[col for col in students.columns if col.startswith('First')][0]].str[0]
-#    students["LAST_INIT"] = students[[col for col in students.columns if col.startswith('Last') ][0]].str[0]
-#    students.rename(columns={"Section":"SECTION"})
 
     # ----- get ready to process .pdf file ----
+    scan_dir = "/Users/peterkaplan/Code/pdfSort/pdf_out/scans"
     scanneds= ["hw abc.pdf",
      "Do now abc1.pdf",
      "donow dim anal2 table.pdf", #different aruco
@@ -346,18 +343,30 @@ if __name__ == '__main__':
      "hw2 dim anal.pdf",
      "do now three sec.pdf",
      "do now sf2.pdf",
-     "graph check1.pdf"]
-    scanned_work = scanneds[7]
+     "graph check1.pdf",
+     "hw sci note1.pdf",
+     "do now const motion4.pdf",
+     "mp1 q1 ke1 p2-4.pdf",
+     "mp1 q1 ke1 p6-8.pdf",
+     "mp1 q1 ke1 p6-8b.pdf",
+     "donow redingmath1.pdf",
+     "donow accel motion1.pdf",
+     "donow accel motion3.pdf",
+     "q1 k31 makeups23.pdf"]
+    scanned_work = Path(scan_dir,scanneds[15])
     p = Pdf_serve(scanned_work, scale=5)
-    i = 0
     aruco_reader = ArucoBubbleSheet(Q_ITEMS_DEFAULT)
 
     # ------ page loop --------
     reprocess_page_list = []
     found_entries = {}
+    i = 0
     offset = 0
     print("page: #/MAX: key, self, instructor")
     for (page_title, qr_loc, _), page in p.next_qr_page():  # returns default page title for run which can be reset by user otherwise None
+        if i >= 470:
+            i += 1
+            continue
         if page_title:
             offset = 0
             print(page_title)
@@ -371,7 +380,6 @@ if __name__ == '__main__':
             i += 1
             f_page = cv2.cvtColor(np.array(page), cv2.COLOR_BGR2GRAY)
             f_page = cv2.adaptiveThreshold(f_page, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 75, 2)
-    #        f_page = cv2.GaussianBlur(f_page, (7, 7), 0) #makes finding worse
             f_page = cv2.dilate(f_page, np.ones((3, 3), np.uint8))
             aruco_dict = aruco_reader.aruco_find(f_page)
             if not aruco_dict:
@@ -386,7 +394,7 @@ if __name__ == '__main__':
             except KeyError:
                 reprocess_page_list.append(i)
                 marked_page.show()
-                print(f"::::{i}/{p.npages}: ({page.width}, {page.height}) {page_title[0]} {[k for k in aruco_dict.keys()]} {bubble_results} ::::::")
+                print(f":REPROCESS: {i}/{p.npages}: ({page.width}, {page.height}) {page_title[0]} {[k for k in aruco_dict.keys()]} {bubble_results} ::::::")
                 continue
             which_student = students[["pageId","First Name","Last Name","Section", "ID"]].copy()
             which_student["p_val"] = 1.0
@@ -402,23 +410,19 @@ if __name__ == '__main__':
                 print(f'++{i+1}/{p.npages}: {student_key}, {likely_student[["First Name", "Last Name", "Section", "ID"]]}++')
             except TypeError:
                 continue 
-            results = {key: str(best_v(value["score"])) for key, value in bubble_results.items() if key != "student"}
-            print(results)
-            def get_values_for_prefix(d, prefix, default="_"):
+
+            def get_values_for_prefix(d: dict, prefix: str, default: str="_"):
                 """Retrieve the values of all keys that start with a given prefix."""
-                values = [d[key] for key in d if key.startswith(prefix)]
+                try:
+                    values = [value for key, value in d.items() if key.startswith(prefix)]
+                except AttributeError: 
+                    values = None
                 return values if values else [default]
 
-            try:
-                assessment_vals = get_values_for_prefix(results, "assessment")
-                self_assessment_vals = get_values_for_prefix(results, "self_assessment")
-
-                assessments_str = ", ".join(assessment_vals)
-                self_assessments_str = ", ".join(self_assessment_vals)
-
-                outstr = f'{likely_student["First Name"]}, {likely_student["Last Name"]}, {likely_student["Section"]}, {likely_student["pageId"]}, {likely_student["ID"]}, {assessments_str}, {self_assessments_str}'
-            except KeyError:
-                pass
+            results = {key: str(best_v(value["score"])) for key, value in bubble_results.items() if key != "student"}
+            assessment_str = ", ".join(get_values_for_prefix(results, "assessment"))
+            self_assessment_str = ", ".join(get_values_for_prefix(results, "self_assessment"))
+            outstr = f'{likely_student["First Name"]}, {likely_student["Last Name"]}, {likely_student["Section"]}, {likely_student["pageId"]}, {likely_student["ID"]}, {assessment_str}, {self_assessment_str}'
             try:
                 found_entries[page_title][likely_student.pageId]=likely_student.p_val
             except AttributeError:
