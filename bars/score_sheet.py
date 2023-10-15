@@ -255,9 +255,11 @@ else:
         curses.endwin()
         return chr(key)
 
-def display_choices(likely_student, page, students):
+def display_choices(likely_student, page, students, interactive=True):
     if likely_student.shape[0] == 1:
         return likely_student
+    elif not interactive: # without an operator, stack all the unclear results in one place
+        return "DEFAULT"
 
     page.show()
 
@@ -282,7 +284,10 @@ def display_choices(likely_student, page, students):
 
     # Collect user input until a valid choice is made
     while True:
-        choice = input("Enter your choice: ")
+        if likely_student.empty:
+            choice = "s"
+        else:
+            choice = input("Enter your choice: ")
 
         if choice == 's':
             print("Start typing the name [ESC to exit]...")
@@ -295,7 +300,7 @@ def display_choices(likely_student, page, students):
 
                 # Use ESC key as exit mechanism, ASCII value for ESC is 27
                 if ord(letter) == 27:
-                    break
+                    return "DEFAULT"
 
                 current_string += letter
                 print(f"current string = {current_string}", end='', flush=True)
@@ -326,16 +331,17 @@ def display_choices(likely_student, page, students):
 
 if __name__ == '__main__':
     # --- load student list ------
+    INTERACTIVE = True
     results_dir = "/Users/peterkaplan/Code/pdfSort/csv_out/"
     return_dir = "/Users/peterkaplan/Code/pdfSort/pdf_out/"
     student_file = "/Users/peterkaplan/Code/pdfSort/bars/students_from_classroom.csv"
+    scan_dir = "/Users/peterkaplan/Code/pdfSort/pdf_out/scans"
     students = pd.read_csv(student_file)
     if 'pageId' not in students.columns:
         raise KeyError(f"Missing Column: pageId from file {student_file}")
     print(students.columns)
 
     # ----- get ready to process .pdf file ----
-    scan_dir = "/Users/peterkaplan/Code/pdfSort/pdf_out/scans"
     scanneds= ["hw abc.pdf",
      "Do now abc1.pdf",
      "donow dim anal2 table.pdf", #different aruco
@@ -354,6 +360,7 @@ if __name__ == '__main__':
      "donow accel motion3.pdf",
      "q1 k31 makeups23.pdf"]
     scanned_work = Path(scan_dir,scanneds[15])
+    default_file = scanned_work.with_name(scanned_work.stem + "_unproc.pdf")
     p = Pdf_serve(scanned_work, scale=5)
     aruco_reader = ArucoBubbleSheet(Q_ITEMS_DEFAULT)
 
@@ -376,7 +383,6 @@ if __name__ == '__main__':
             if not os.path.exists(out_csvf):
                 with open(out_csvf,"w") as f:
                     f.write(",".join(["First","Last","Section","pageId","ID","Score","SelfA"])+"\n") 
-
             i += 1
             f_page = cv2.cvtColor(np.array(page), cv2.COLOR_BGR2GRAY)
             f_page = cv2.adaptiveThreshold(f_page, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 75, 2)
@@ -403,7 +409,11 @@ if __name__ == '__main__':
             most_likely_p = min(which_student.p_val)
             likely_student = which_student[which_student.p_val <= 10*most_likely_p]
             try:
-                likely_student = display_choices(likely_student, page, students).iloc[0] # does nothing if only one choice
+                likely_student = display_choices(likely_student, page, students, interactive=INTERACTIVE).iloc[0] # does nothing if only one choice
+                if likely_student == 'DEFAULT':
+                    out_pdff = default_file
+                    marked_page = page
+                    continue
             except AttributeError:
                 continue
             try:
@@ -431,6 +441,6 @@ if __name__ == '__main__':
                 print(outstr)
                 f.write(outstr+"\n")
             marked_page = annotate_image(marked_page, outstr)
-            out_pdff = return_dir + likely_student["pageId"]+"_MP1.pdf"
+            out_pdff = Path(return_dir,  likely_student["pageId"]+"_MP1.pdf")
         insert_image_to_pdf(marked_page, out_pdff, offset = offset) # if no QR code, just stick it where the last page went.
         offset += 1
