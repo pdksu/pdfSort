@@ -164,6 +164,7 @@ cython_debug/
 #.idea/
 
 # development settings
+*.png
 bars/*.jpg
 bars/*.png
 bars/*.pdf

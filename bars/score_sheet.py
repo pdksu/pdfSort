@@ -336,6 +336,7 @@ if __name__ == '__main__':
     return_dir = "/Users/peterkaplan/Code/pdfSort/pdf_out/"
     student_file = "/Users/peterkaplan/Code/pdfSort/bars/students_from_classroom.csv"
     scan_dir = "/Users/peterkaplan/Code/pdfSort/pdf_out/scans"
+    pdf_suffix = "_MP2.pdf"
     students = pd.read_csv(student_file)
     if 'pageId' not in students.columns:
         raise KeyError(f"Missing Column: pageId from file {student_file}")
@@ -358,8 +359,16 @@ if __name__ == '__main__':
      "donow redingmath1.pdf",
      "donow accel motion1.pdf",
      "donow accel motion3.pdf",
-     "q1 k31 makeups23.pdf"]
-    scanned_work = Path(scan_dir,scanneds[15])
+     "donow goes up1.pdf",
+     "donow motiongraph triangle.pdf",
+     "donow goesup2.pdf",
+     "keq2 q1-2 2023.pdf",
+     "keq2 q3-4 2023.pdf",
+     "q1 ke1 makeups23.pdf",
+     "fbd check.pdf",
+     "q3 NL XC.pdf",
+     "mass day.pdf"]
+    scanned_work = Path(scan_dir,scanneds[-1])
     default_file = scanned_work.with_name(scanned_work.stem + "_unproc.pdf")
     p = Pdf_serve(scanned_work, scale=5)
     aruco_reader = ArucoBubbleSheet(Q_ITEMS_DEFAULT)
@@ -400,6 +409,7 @@ if __name__ == '__main__':
             except KeyError:
                 reprocess_page_list.append(i)
                 marked_page.show()
+                out_pdff = default_file
                 print(f":REPROCESS: {i}/{p.npages}: ({page.width}, {page.height}) {page_title[0]} {[k for k in aruco_dict.keys()]} {bubble_results} ::::::")
                 continue
             which_student = students[["pageId","First Name","Last Name","Section", "ID"]].copy()
@@ -416,6 +426,8 @@ if __name__ == '__main__':
                     continue
             except AttributeError:
                 continue
+            except ValueError: #triggered by if likely_student == 'DEFAULT'
+                pass
             try:
                 print(f'++{i+1}/{p.npages}: {student_key}, {likely_student[["First Name", "Last Name", "Section", "ID"]]}++')
             except TypeError:
@@ -441,6 +453,6 @@ if __name__ == '__main__':
                 print(outstr)
                 f.write(outstr+"\n")
             marked_page = annotate_image(marked_page, outstr)
-            out_pdff = Path(return_dir,  likely_student["pageId"]+"_MP1.pdf")
+            out_pdff = Path(return_dir,  likely_student["pageId"]+pdf_suffix)
         insert_image_to_pdf(marked_page, out_pdff, offset = offset) # if no QR code, just stick it where the last page went.
         offset += 1
