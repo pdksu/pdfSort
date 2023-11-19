@@ -76,11 +76,14 @@ class Pdf_serve():
                 qrc_success, qrc = page_qr(image)
                 if not qrc_success:
                     if not self.default_page_set:
-                        default_pagename = input("No QR code found, enter default for this scan file (- for skip page)")
+                        default_pagename = input("No QR code found, enter default for this scan file (- for skip page, enter to append to prior)")
                         print(f"New default: {default_pagename}")
                         self.default_page_set = True
-                        if default_pagename[0] != "-":
-                            self.default_page = default_pagename
+                        try:
+                            if default_pagename[0] != "-":
+                                self.default_page = default_pagename
+                        except IndexError:
+                            yield((None, None, None), image)
                     qrc = (self.default_page, None, None) # None by default or if leading char is -
                 yield (qrc, image)
             self.page_index += 1
@@ -367,7 +370,9 @@ if __name__ == '__main__':
      "q1 ke1 makeups23.pdf",
      "fbd check.pdf",
      "q3 NL XC.pdf",
-     "mass day.pdf"]
+     "mass day.pdf",
+     "donow airbag2.pdf",
+     "open lil gee lab.pdf"]
     scanned_work = Path(scan_dir,scanneds[-1])
     default_file = scanned_work.with_name(scanned_work.stem + "_unproc.pdf")
     p = Pdf_serve(scanned_work, scale=5)
