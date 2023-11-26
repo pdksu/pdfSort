@@ -14,6 +14,9 @@
     {% if img_data %}
         <img src="data:image/png;base64,{{ img_data }}">
     {% endif %}
+    {% if img_name %}
+        <p>{{ img_name }}</p>
+    {% endif %}
 </body>
 </html>
 
