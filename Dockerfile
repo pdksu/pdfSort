@@ -14,10 +14,12 @@ COPY requirements.txt requirements.txt
 RUN pip install -r requirements.txt
 
 # Copy the bars directory (and its contents) to /app
-COPY bars/ /app/bars/
+COPY bars/bmake.py /app/bars/bmake.py
+COPY bars/__init__.py /app/bars/__init__.py
+COPY bars_app.py /app
 
 # Copy the templates directory to /app
-COPY templates/ /app/templates/
+COPY templates/* /app/templates/
 
 # Copy the entrypoint script
 COPY entrypoint.sh /app/

@@ -9,98 +9,39 @@
 #    at each page of .pdf, try reading. If successful, assign score and note pages
 #    when done, .csv should be written.
 #
-from flask import Flask, render_template, request, send_file
 import cv2
 import io
 from PIL import Image, ImageDraw, ImageFont
-import logging
 import numpy as np
 import os
 import sys
 import pandas as pd
-# from PyPDF2 import PdfReader
 import PyPDF2
 import fitz #MuPDF
 import sys
 from string import ascii_uppercase
 from bfind import ArucoBubbleSheet, page_qr
 from pathlib import Path
+from file_lists import list_from_file, files_to_csv
+from pdfsort_classes import Pdf_serve, bubble_sheet
 
 # Define paths
-ROOT_PATH = os.path.dirname(os.path.abspath(__file__))
-TEMPLATE_PATH = os.path.join(os.path.dirname(ROOT_PATH), 'templates')
+from config.config import *
 
-app = Flask(__name__, root_path=ROOT_PATH, template_folder=TEMPLATE_PATH)
-logging.log(logging.DEBUG, "app = Flask defined")
-
-@app.route('/', methods=['GET', 'POST'])
-def index():
-    logging.log(logging.DEBUG, "index()")
-    if request.method == 'POST':
-        pdf_file = request.form['pdf']
-        scores_dir = request.form['scores']
-        return_dir = request.form['returns']
-        student_file = request.form['students']
-        blank_dir = request.form['blanks']
-
-        pdf = Pdf_serve(pdf_file)
-
-def pixmap_to_pil(pixmap):
-    """Convert a PyMuPDF Pixmap to a PIL Image."""
-    if pixmap.n == 4:
-        mode = "RGBA"
-    elif pixmap.n == 3:
-        mode = "RGB"
-    elif pixmap.n == 1:
-        mode = "L"
-
-    return Image.frombytes(mode, [pixmap.width, pixmap.height], pixmap.samples)
-
-class Pdf_serve():
-    def __init__(self, pdf_file, scale: float = 3.25):
-        self.reader = fitz.open(pdf_file)
-        self.npages = len(self.reader)
-        self.page_index = 0
-        self.scale = scale
-        self.default_page_set = False
-        self.default_page = None
-
-    def next_qr_page(self):
-        scale_matrix = fitz.Matrix(self.scale, self.scale)
-        while self.page_index < self.npages: # and (self.page_index < 10):
-            qrc_success = False
-            page = self.reader[self.page_index]
-            pixmap = page.get_pixmap(matrix = scale_matrix)
-            if pixmap:
-                image = pixmap_to_pil(pixmap)
-                qrc_success, qrc = page_qr(image)
-                if not qrc_success:
-                    if not self.default_page_set:
-                        default_pagename = input("No QR code found, enter default for this scan file (- for skip page, enter to append to prior)")
-                        print(f"New default: {default_pagename}")
-                        self.default_page_set = True
-                        try:
-                            if default_pagename[0] != "-":
-                                self.default_page = default_pagename
-                        except IndexError:
-                            yield((None, None, None), image)
-                    qrc = (self.default_page, None, None) # None by default or if leading char is -
-                yield (qrc, image)
-            self.page_index += 1
 
 def annotate_image(img, text):
     # Open the image and get its size
     width, height = img.size
     
     # Create a drawing context
-    draw = ImageDraw.Draw(img)
+    draw_obj = ImageDraw.Draw(img)
     
     # Choose a font and size
     font = ImageFont.truetype("/Library/Fonts/Arial Unicode.ttf", 80)  # Adjust font path and size accordingly
     
     # Calculate text width and height
     print(text)
-    text_width = draw.textlength(text=text, font=font)
+    text_width = draw_obj.textlength(text=text, font=font)
     text_height = 140
     
     # Define position to place the text at the bottom-center of the image
@@ -109,14 +50,14 @@ def annotate_image(img, text):
     # Draw a semi-transparent rectangle behind the text for better visibility
 
     padding = 5
-    draw.rectangle([x - padding, y - padding, x + text_width + padding, y + text_height + padding], fill=(255, 255, 255, 128))
+    draw_obj.rectangle([x - padding, y - padding, x + text_width + padding, y + text_height + padding], fill=(255, 255, 255, 128))
 
     # Draw the text on the image
-    draw.text((x, y), text, font=font, fill=(90, 150, 90, 100))  # Change fill color if needed
+    draw_obj.text((x, y), text, font=font, fill=(90, 150, 90, 100))  # Change fill color if needed
 
     return img
 
-def insert_image_to_pdf(image, pdf_file, offset = 0):
+def insert_image_to_pdf(image, pdf_file: str, offset: int = 0):
     # Convert PIL image to PDF
     img_byte_arr = io.BytesIO()
     image.save(img_byte_arr, format='PDF')
@@ -149,26 +90,6 @@ def get_students(student_csv: str = "classlists22.csv"):
     with open(student_csv, 'r') as f:
         reader = pd.read_csv(f)
         return reader
-
-class bubble_sheet():
-    def __init__(self, fname,  q_items, name=None):
-        self.pdfReader = PdfReader(fname)
-        self.scanner = ArucoBubbleSheet(q_items)
-        self.name = name
-
-    def scan_page(self, page):
-        for img in page.images:
-            qrc_success, qrc = page_qr(img.image)
-            if not qrc_success:
-                continue
-            try:
-                bubbles = self.scanner.analyze_bubbles(img.image)
-            except KeyError as e:
-                bubbles = None 
-            if bubbles:
-                bubbles["name"] = self.name
-                return True, bubbles
-        return False, {}
 
 Q_ITEMS_DEFAULT =   {"student" : {"items" : {"ID" : {(i, 0) : i for i in range(10)},
                     "SECTION" : {(19+2*i, 0) : 2*(1+i) for i in range(4)},
@@ -213,7 +134,7 @@ Q_ITEMS_DEFAULT =   {"student" : {"items" : {"ID" : {(i, 0) : i for i in range(1
 for item in Q_ITEMS_DEFAULT.keys():
     Q_ITEMS_DEFAULT[item]["set"] = set([b[0] for b in Q_ITEMS_DEFAULT[item]["bounds"].values()])
 
-def best_v(choice_dir : dict = {}, ret_type = str):
+def darkest_bubble_str(choice_dir : dict = {}, return_type = str):
     low_p = 1.0
     choice = "_"
     for k, v in choice_dir.items():
@@ -224,14 +145,14 @@ def best_v(choice_dir : dict = {}, ret_type = str):
         except TypeError as e:
             print(f"{v}--\n{choice_dir}")
             raise e
-    return ret_type(choice)
+    return return_type(choice)
 
-def update_p_val(row, search_data, col_name:str="pageId"):
+def update_p_val(row, search_data: dict, col_name:str="pageId"):
     rval = row[col_name]
     updated_p = row["p_val"]
     key_order = ["FIRST_INIT","LAST_INIT","ID","SECTION"]
 
-    for i, (char, key) in enumerate(zip(rval, key_order)):
+    for (char, key) in zip(rval, key_order):
         if char in search_data[key]:
             updated_p *= max(0.01, search_data[key][char])
     return updated_p
@@ -335,7 +256,7 @@ def display_choices(likely_student, page, students, interactive=True):
 if __name__ == '__main__':
     # --- load student list ------
     INTERACTIVE = True
-    results_dir = "/Users/peterkaplan/Code/pdfSort/csv_out/"
+    results_dir = "/Users/peterkaplan/Code/pdfSort/csv_out/" #TODO don't hardcode working dir
     return_dir = "/Users/peterkaplan/Code/pdfSort/pdf_out/"
     student_file = "/Users/peterkaplan/Code/pdfSort/bars/students_from_classroom.csv"
     scan_dir = "/Users/peterkaplan/Code/pdfSort/pdf_out/scans"
@@ -346,36 +267,11 @@ if __name__ == '__main__':
     print(students.columns)
 
     # ----- get ready to process .pdf file ----
-    scanneds= ["hw abc.pdf",
-     "Do now abc1.pdf",
-     "donow dim anal2 table.pdf", #different aruco
-     "donow volume 1.pdf",
-     "hw2 dim anal.pdf",
-     "do now three sec.pdf",
-     "do now sf2.pdf",
-     "graph check1.pdf",
-     "hw sci note1.pdf",
-     "do now const motion4.pdf",
-     "mp1 q1 ke1 p2-4.pdf",
-     "mp1 q1 ke1 p6-8.pdf",
-     "mp1 q1 ke1 p6-8b.pdf",
-     "donow redingmath1.pdf",
-     "donow accel motion1.pdf",
-     "donow accel motion3.pdf",
-     "donow goes up1.pdf",
-     "donow motiongraph triangle.pdf",
-     "donow goesup2.pdf",
-     "keq2 q1-2 2023.pdf",
-     "keq2 q3-4 2023.pdf",
-     "q1 ke1 makeups23.pdf",
-     "fbd check.pdf",
-     "q3 NL XC.pdf",
-     "mass day.pdf",
-     "donow airbag2.pdf",
-     "open lil gee lab.pdf"]
+    files_to_csv(Path(scan_dir)) # update list of scanned files
+    scanneds = list_from_file(Path(scan_dir, "scans.csv"))
     scanned_work = Path(scan_dir,scanneds[-1])
     default_file = scanned_work.with_name(scanned_work.stem + "_unproc.pdf")
-    p = Pdf_serve(scanned_work, scale=5)
+    pdf_page_service = Pdf_serve(scanned_work, scale=5)
     aruco_reader = ArucoBubbleSheet(Q_ITEMS_DEFAULT)
 
     # ------ page loop --------
@@ -383,9 +279,10 @@ if __name__ == '__main__':
     found_entries = {}
     i = 0
     offset = 0
+    MAX_PAGE_COUNT = 500
     print("page: #/MAX: key, self, instructor")
-    for (page_title, qr_loc, _), page in p.next_qr_page():  # returns default page title for run which can be reset by user otherwise None
-        if i >= 470:
+    for (page_title, qr_loc, _), page in pdf_page_service.next_qr_page():  # returns default page title for run which can be reset by user otherwise None
+        if i >= MAX_PAGE_COUNT:
             i += 1
             continue
         if page_title:
@@ -407,15 +304,15 @@ if __name__ == '__main__':
             bubble_results, marked_page = aruco_reader.analyze_bubbles(page, ad = aruco_dict)
             try:
                 student = bubble_results['student']
-                student_key = best_v(student['FIRST_INIT']) + best_v(student['LAST_INIT']) +\
-                        best_v(student['ID']) + best_v(student['SECTION'])
+                student_key = darkest_bubble_str(student['FIRST_INIT']) + darkest_bubble_str(student['LAST_INIT']) +\
+                        darkest_bubble_str(student['ID']) + darkest_bubble_str(student['SECTION'])
                 student["ID"] = {str(k):v for k,v in student["ID"].items()}
                 student["SECTION"] = {str(k):v for k,v in student["SECTION"].items()}
             except KeyError:
                 reprocess_page_list.append(i)
                 marked_page.show()
                 out_pdff = default_file
-                print(f":REPROCESS: {i}/{p.npages}: ({page.width}, {page.height}) {page_title[0]} {[k for k in aruco_dict.keys()]} {bubble_results} ::::::")
+                print(f":REPROCESS: {i}/{pdf_page_service.npages}: ({page.width}, {page.height}) {page_title[0]} {[k for k in aruco_dict.keys()]} {bubble_results} ::::::")
                 continue
             which_student = students[["pageId","First Name","Last Name","Section", "ID"]].copy()
             which_student["p_val"] = 1.0
@@ -434,7 +331,7 @@ if __name__ == '__main__':
             except ValueError: #triggered by if likely_student == 'DEFAULT'
                 pass
             try:
-                print(f'++{i+1}/{p.npages}: {student_key}, {likely_student[["First Name", "Last Name", "Section", "ID"]]}++')
+                print(f'++{i+1}/{pdf_page_service.npages}: {student_key}, {likely_student[["First Name", "Last Name", "Section", "ID"]]}++')
             except TypeError:
                 continue 
 
@@ -446,7 +343,7 @@ if __name__ == '__main__':
                     values = None
                 return values if values else [default]
 
-            results = {key: str(best_v(value["score"])) for key, value in bubble_results.items() if key != "student"}
+            results = {key: str(darkest_bubble_str(value["score"])) for key, value in bubble_results.items() if key != "student"}
             assessment_str = ", ".join(get_values_for_prefix(results, "assessment"))
             self_assessment_str = ", ".join(get_values_for_prefix(results, "self_assessment"))
             outstr = f'{likely_student["First Name"]}, {likely_student["Last Name"]}, {likely_student["Section"]}, {likely_student["pageId"]}, {likely_student["ID"]}, {assessment_str}, {self_assessment_str}'
