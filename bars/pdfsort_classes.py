@@ -12,8 +12,7 @@
 #
 from PIL import Image
 import fitz #MuPDF
-from string import ascii_uppercase
-from bfind import ArucoBubbleSheet, page_qr
+from bfind import page_qr
 
 # Define paths
 from config.config import *
@@ -61,24 +60,3 @@ class Pdf_serve():
                     qrc = (self.default_page, None, None) # None by default or if leading char is -
                 yield (qrc, image)
             self.page_index += 1
-
-
-class bubble_sheet():
-    def __init__(self, fname,  q_items, name=None):
-        self.pdfReader = PdfReader(fname)
-        self.scanner = ArucoBubbleSheet(q_items)
-        self.name = name
-
-    def scan_page(self, page):
-        for img in page.images:
-            qrc_success, qrc = page_qr(img.image)
-            if not qrc_success:
-                continue  # TODO: put page without qr code into the last file that had a qr code
-            try:
-                bubbles = self.scanner.analyze_bubbles(img.image)
-            except KeyError:
-                bubbles = None 
-            if bubbles:
-                bubbles["name"] = self.name
-                return True, bubbles
-        return False, {}
