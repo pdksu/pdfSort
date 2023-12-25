@@ -165,10 +165,10 @@ cython_debug/
 
 # development settings
 *.png
-bars/*.jpg
-bars/*.png
-bars/*.pdf
-bars/*.csv
+source/*.jpg
+source/*.png
+source/*.pdf
+source/*.csv
 pdf_out/*
 csv_out/*
 test*.py

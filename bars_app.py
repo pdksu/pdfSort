@@ -3,7 +3,7 @@ import base64
 from io import BytesIO
 from flask import Flask, render_template, request
 import os
-from bars.bmake import mbar
+from source.bmake import mbar
 
 import logging
 logging.basicConfig(level=logging.DEBUG)
