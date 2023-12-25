@@ -66,15 +66,13 @@ def complete_save_grades(grades: DataFrame, fout, folder: Path = DEF_PATH, roste
 
 if __name__ == "__main__":
     f_roster = "students_from_classroom.csv" # in csv_out
-    f_output = "roster_blank.csv"
-    f_input = None
+    f_input, f_output = None, "roster_blank.csv"
     if len(sys.argv) >= 2:
         f_input = sys.argv[1]
     if len(sys.argv) >= 3:
         f_output = sys.argv[2]
     if len(sys.argv) == 4:
         f_roster = sys.argv[3]
-    
 
     if f_input:
         grades = read_csv(f_input).drop_duplicates()
