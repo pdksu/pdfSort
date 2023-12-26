@@ -3,6 +3,7 @@ from qrcode import QRCode
 from qrcode.image.pure import PyPNGImage
 from numpy import array 
 from PIL import Image
+from pathlib import Path
 
 def mbar(message:str, type='PIL', height=200, width=200, resize=False, **kwargs):
     code = QRCode(**kwargs)
@@ -45,13 +46,13 @@ def embed_bar(bigim, smallim, xoff=0, yoff=0):
     return newim
 
 if __name__ == '__main__':
-    im = cv2.imread('Im1.jpg')
+    im = cv2.imread(Path('test_images','Im1.jpg'))
     msg= 'u0testv0'
     bar = mbar(msg, border=2, box_size=6)
-    rb = bar.save(f'{msg}.png')
+    rb = bar.save(Path('test_images',f'{msg}.png'))
     bar = array(bar, dtype="uint8")
     bar = cv2.cvtColor(bar, cv2.COLOR_RGB2BGR)
 #    print(dir(bar))
     newim = embed_bar(im, bar, int(im.shape[0]*.7), int(im.shape[1]*.6))
-    cv2.imshow("seeme", newim)
+    cv2.imshow("see me", newim)
     cv2.waitKey(0)

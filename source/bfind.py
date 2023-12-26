@@ -254,7 +254,8 @@ def demo_test():
                 }
     sheet_reader = ArucoBubbleSheet(q_items)
     test_images = ["read_bubbles_bars_test3.pdf", "test_scan4_aruco.pdf","read_bubbles_bars_mp1.pdf"]
-    pdfr = pypdf.PdfReader(test_images[2])
+    test_path = 'test_images'
+    pdfr = pypdf.PdfReader(Path(test_path,test_images[2]))
     print(f"\tProcessing {len(pdfr.pages)} pages:")
     for page in pdfr.pages:
         print(f"Found {len(page.images)} images on the first page")
