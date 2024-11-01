@@ -9,6 +9,7 @@
 #    at each page of .pdf, try reading. If successful, assign score and note pages
 #    when done, .csv should be written.
 #
+import argparse
 import cv2
 import io
 from PIL import ImageDraw, ImageFont
@@ -22,6 +23,7 @@ from pathlib import Path
 from file_lists import list_from_file, files_to_csv
 from pdfsort_classes import Pdf_serve 
 from choices import display_choices
+
 
 # Define paths
 from config.config import *
@@ -155,15 +157,31 @@ def update_p_val(row, search_data: dict, col_name:str="pageId"):
             updated_p *= max(0.01, search_data[key][char])
     return updated_p
 
+def getargs():
+    parser = argparse.ArgumentParser(
+        prog='PDFsort',
+        description='Sort scans of whole classes into individual portfolios for students.'
+    )
+    parser.add_argument('-Q','--noQR',action='store_true')
+    args = parser.parse_args()
+    return args
 
 if __name__ == '__main__':
+    args = getargs()
+    noQR = args.noQR if args.noQR else False
     # --- load student list ------
     INTERACTIVE = True
-    results_dir = "/Users/peterkaplan/Code/pdfSort/csv_out/" #TODO don't hardcode working dir
-    return_dir = "/Users/peterkaplan/Code/pdfSort/pdf_out/"
-    student_file = "/Users/peterkaplan/Code/pdfSort/csv_out/students_from_classroom.csv"
-    scan_dir = "/Users/peterkaplan/Code/pdfSort/pdf_out/scans"
-    pdf_suffix = "_MP2.pdf"
+    keepWithPrevious = True # flag to put pages without student ID's with the previously read student ID
+    curr_dir = Path().absolute()
+    results_dir = curr_dir / Path("csv_out") 
+    if not Path(results_dir).exists():
+        curr_dir = curr_dir.parent
+        results_dir = curr_dir / Path("csv_out") 
+    return_dir = curr_dir / Path("pdf_out") 
+    student_file = results_dir / Path("students_from_classroom.csv")
+    scan_dir = return_dir / Path("scans")
+    pdf_suffix = "_MP1.pdf"
+
     students = read_csv(student_file)
     if 'pageId' not in students.columns:
         raise KeyError(f"Missing Column: pageId from file {student_file}")
@@ -182,9 +200,9 @@ if __name__ == '__main__':
     found_entries = {}
     i = 0
     offset = 0
-    MAX_PAGE_COUNT = 500
+    MAX_PAGE_COUNT = 800
     print("page: #/MAX: key, self, instructor")
-    for (page_title, qr_loc, _), page in pdf_page_service.next_qr_page():  # returns default page title for run which can be reset by user otherwise None
+    for (page_title, qr_loc, _), page in pdf_page_service.next_qr_page(noQR):  # returns default page title for run which can be reset by user otherwise None
         if i >= MAX_PAGE_COUNT:
             i += 1
             continue
@@ -193,7 +211,7 @@ if __name__ == '__main__':
             print(page_title)
             if page_title not in found_entries:
                 found_entries[page_title] = {}
-            out_csvf = results_dir+page_title+".csv"
+            out_csvf = results_dir / Path(page_title+".csv")
             if not os.path.exists(out_csvf):
                 with open(out_csvf,"w") as f:
                     f.write(",".join(["First","Last","Section","pageId","ID","Score","SelfA"])+"\n") 
@@ -204,40 +222,46 @@ if __name__ == '__main__':
             aruco_dict = aruco_reader.aruco_find(f_page)
             if not aruco_dict:
                 aruco_dict = None
-            bubble_results, marked_page = aruco_reader.analyze_bubbles(page, ad = aruco_dict)
-            try:
-                student = bubble_results['student']
-                student_key = darkest_bubble_str(student['FIRST_INIT']) + darkest_bubble_str(student['LAST_INIT']) +\
-                        darkest_bubble_str(student['ID']) + darkest_bubble_str(student['SECTION'])
-                student["ID"] = {str(k):v for k,v in student["ID"].items()}
-                student["SECTION"] = {str(k):v for k,v in student["SECTION"].items()}
-            except KeyError:
-                reprocess_page_list.append(i)
-                marked_page.show()
-                out_pdff = default_file
-                print(f":REPROCESS: {i}/{pdf_page_service.npages}: ({page.width}, {page.height}) {page_title[0]} {[k for k in aruco_dict.keys()]} {bubble_results} ::::::")
-                continue
-            which_student = students[["pageId","First Name","Last Name","Section", "ID"]].copy()
-            which_student["p_val"] = 1.0
-            which_student.p_val = which_student.apply(lambda row: update_p_val(row, student, col_name="pageId"), axis=1)
-            which_student.p_val = which_student.apply(lambda row: row['p_val'] if row['pageId'] not in found_entries[page_title] else row['p_val']*100, axis=1)
-            most_likely_p = min(which_student.p_val)
-            likely_student = which_student[which_student.p_val <= 10*most_likely_p]
-            try:
-                likely_student = display_choices(likely_student, page, students, interactive=INTERACTIVE).iloc[0] # does nothing if only one choice
-                if likely_student == 'DEFAULT':
-                    out_pdff = default_file
-                    marked_page = page
+            else:
+                bubble_results, marked_page = aruco_reader.analyze_bubbles(page, ad = aruco_dict)
+                try:
+                    student = bubble_results['student']
+                    student_key = darkest_bubble_str(student['FIRST_INIT']) + darkest_bubble_str(student['LAST_INIT']) +\
+                            darkest_bubble_str(student['ID']) + darkest_bubble_str(student['SECTION'])
+                    student["ID"] = {str(k):v for k,v in student["ID"].items()}
+                    student["SECTION"] = {str(k):v for k,v in student["SECTION"].items()}
+                except (TypeError, KeyError):
+                    if not keepWithPrevious:
+                        reprocess_page_list.append(i)
+                        marked_page.show()
+                        out_pdff = default_file
+                        try:
+                            print(f":REPROCESS: {i}/{pdf_page_service.npages}: ({page.width}, {page.height}) {page_title[0]} {[k for k in aruco_dict.keys()]} {bubble_results} ::::::")
+                        except:
+                            pass
+                        continue
+                which_student = students[["pageId","First Name","Last Name","Section", "ID"]].copy()
+                which_student["p_val"] = 1.0
+                which_student.p_val = which_student.apply(lambda row: update_p_val(row, student, col_name="pageId"), axis=1)
+                which_student.p_val = which_student.apply(lambda row: row['p_val'] if row['pageId'] not in found_entries[page_title] else row['p_val']*100, axis=1) # try to avoid duplicate pages for the same student
+                most_likely_p = min(which_student.p_val)
+                likely_student = which_student[which_student.p_val <= 10*most_likely_p]
+                try:
+                    likely_student = display_choices(likely_student, page, students, interactive=INTERACTIVE).iloc[0] # does nothing if only one choice
+                    if likely_student == 'DEFAULT':
+                        out_pdff = default_file
+                        marked_page = page
+                        continue
+                except AttributeError:
                     continue
-            except AttributeError:
-                continue
-            except ValueError: #triggered by if likely_student == 'DEFAULT'
-                pass
+                except ValueError: #triggered by if likely_student == 'DEFAULT'
+                    pass
             try:
                 print(f'++{i+1}/{pdf_page_service.npages}: {student_key}, {likely_student[["First Name", "Last Name", "Section", "ID"]]}++')
             except TypeError:
                 continue 
 
+# TODO: move get_values_for_prefix def out of loop
             def get_values_for_prefix(d: dict, prefix: str, default: str="_"):
                 """Retrieve the values of all keys that start with a given prefix."""
                 try:
@@ -259,5 +283,7 @@ if __name__ == '__main__':
                 f.write(outstr+"\n")
             marked_page = annotate_image(marked_page, outstr)
             out_pdff = Path(return_dir,  likely_student["pageId"]+pdf_suffix)
+        else:
+            marked_page = page
         insert_image_to_pdf(marked_page, out_pdff, offset = offset) # if no QR code, just stick it where the last page went.
         offset += 1

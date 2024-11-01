@@ -12,7 +12,7 @@
 #
 from PIL import Image
 import fitz #MuPDF
-from bfind import page_qr
+from bfind import page_qr, page_no_qr
 
 # Define paths
 from config.config import *
@@ -38,15 +38,15 @@ class Pdf_serve():
         self.default_page_set = False
         self.default_page = None
 
-    def next_qr_page(self):
+    def next_qr_page(self, noQR = False):
         scale_matrix = fitz.Matrix(self.scale, self.scale)
         while self.page_index < self.npages: # and (self.page_index < 10):
-            qrc_success = False
+            qrc_success = False 
             page = self.reader[self.page_index]
             pixmap = page.get_pixmap(matrix = scale_matrix)
             if pixmap:
                 image = pixmap_to_pil(pixmap)
-                qrc_success, qrc = page_qr(image)
+                qrc_success, qrc = page_qr(image) if not noQR else page_no_qr(image)
                 if not qrc_success:
                     if not self.default_page_set:
                         default_pagename = input("No QR code found, enter default for this scan file (- for skip page, enter to append to prior)")

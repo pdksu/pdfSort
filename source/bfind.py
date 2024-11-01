@@ -85,6 +85,11 @@ def page_qr(img:Image, verbose = False):
 
     return False, (None, None, None)
 
+def page_no_qr(img:Image, verbose = False):
+#    imga = np.array(img)
+    return True, ("NOQR", None, None)
+
+
 BUBBLE_HEAD =  {"student" : {"items" : {"ID" : {(i, 0) : i for i in range(10)},
                     "SECTION" : {(19+2*i, 0) : 2*(1+i) for i in range(4)},
                     "FIRST_INIT" : {(i, 1 ) : ascii_uppercase[i] for i in range(26)},
@@ -158,13 +163,23 @@ class ArucoBubbleSheet:
         """
         q_items_list = self.q_items
         if ad is None:
-            ad = self.aruco_find(np.array(img.image))
-            (rot, flip) = self.aruco_check_orientation(ad)
-            print(f"ORIENTATION rot, flip = {rot}, {flip}")
-            image = img.image if flip == 1 else img.image[::-1,:,:]
-            image = image.rotate(rot) # TODO: make rotation actually work!
-            ad = self.aruco_find(np.array(image)) # re-find aruco after rotation
-    #       image.show()
+            try:
+                ad = self.aruco_find(np.array(img.image))
+            except AttributeError:
+                ad = self.aruco_find(img)
+                print(ad)
+            if ad is None:
+                return None, img
+            try:
+                (rot, flip) = self.aruco_check_orientation(ad)
+                print(f"ORIENTATION rot, flip = {rot}, {flip}")
+                image = img.image if flip == 1 else img.image[::-1,:,:]
+                image = image.rotate(rot) # TODO: make rotation actually work!
+                ad = self.aruco_find(np.array(image)) # re-find aruco after rotation
+            except AssertionError as ae:
+                print(f"assertion warning: {ae}")
+                return None, img
+                
         else:
             try:
                 image = img.image

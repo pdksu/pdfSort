@@ -4,6 +4,8 @@ from pathlib import Path
 from pandas import DataFrame, read_csv, concat
 
 CSV_PATH_DEFAULT = Path(Path().absolute().parent,'csv_out')
+if not CSV_PATH_DEFAULT.exists():
+    CSV_PATH_DEFAULT = Path(Path().absolute(),'csv_out')
 
 def merge_scores(score_files : list, 
                  roster : Path = Path(CSV_PATH_DEFAULT, 'students_from_classroom.csv'),
@@ -33,8 +35,10 @@ def merge_scores(score_files : list,
         if merged.empty:
             merged = cur_filled_grades.copy()
         else:
-            merged = merged.merge(cur_filled_grades[['ID']+list(rename_dict.values())], how="left", on="ID")
+            merged = merged.merge(cur_filled_grades[['ID']+list(rename_dict.values())], how="right", on="ID")
+            merged.drop_duplicates()
         if f_out:
+            merged.drop_duplicates()
             merged.to_csv(f_out, index=False)
             score_index_file = Path(f_out).parent / (Path(f_out).stem + '_index.csv')
             score_index.to_csv(score_index_file, index=False)
@@ -45,10 +49,20 @@ if __name__ == '__main__':
              'conserve energy quiz prob.csv',
              'conserve energy quiz q3.csv',
              'conserve energy quiz q4.csv', ]
-    files = ['Conserve m and e quiz q3.csv', 
-             'Conserve m and e quiz.csv', 
+    files = [
+             "Conserve p and E quiz q1.csv",
+             "Conserve p and E quiz q2.csv",
+             'Conserve m and e quiz q3.csv', 
              'Conserve momentum and energy quiz q4.csv',
-             "Conserve p and E quiz q1.csv"]
+#             'Conserve m and e quiz.csv', 
+             'Conserve m and e quiz q5.csv',
+             ]
+    files = ['cm keppler nug q2.csv',
+             'cm keppler nug 1.csv',
+             'cm keppler nug q4.csv',
+             'cm keppler nug q3.csv']
+    files = ['OSciEd P2 Q0.csv','OSciEd P2 Q2.csv','OSciEd P2 Q4.csv','OSciEd P2 Q6.csv',
+             'OSciEd P2 Q1.csv','OSciEd P2 Q3.csv','OSciEd P2 Q5.csv','OSciEd P2 xc1.csv'] 
     files = [Path(CSV_PATH_DEFAULT, f) for f in files]
-    merge_scores(files, f_out = Path(CSV_PATH_DEFAULT, 'testmerge.csv'))
+    merge_scores(files, f_out = Path(CSV_PATH_DEFAULT, 'OSciEd P2 merge.csv'))
 
