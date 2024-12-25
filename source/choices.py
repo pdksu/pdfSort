@@ -1,4 +1,5 @@
 import sys
+MAXCHOICES = 10
 
 # Platform-specific imports and functions
 if sys.platform.startswith('win32'):
@@ -22,7 +23,7 @@ else:
         curses.endwin()
         return chr(key)
 
-def display_choices(likely_student, page, students, interactive=True):
+def display_choices(likely_student, page, students, interactive=True, last_choice = None):
     if likely_student.shape[0] == 1:
         return likely_student
     elif not interactive: # without an operator, stack all the unclear results in one place
@@ -39,6 +40,8 @@ def display_choices(likely_student, page, students, interactive=True):
         for index, (_, student) in enumerate(possible_choices.iterrows(), 1):
             # Printing only specific fields
             print(f"({index}) {student[first_name_col]} {student[last_name_col]} {student[page_index_col]}")
+            if index > MAXCHOICES:
+                break
         print(alternative)
 
     # Initial display of all likely student choices
@@ -93,5 +96,8 @@ def display_choices(likely_student, page, students, interactive=True):
         if choice.isdigit() and 1 <= int(choice) <= likely_student.shape[0]:
             # Return the chosen student
             return likely_student.iloc[int(choice) - 1:int(choice)]
+        
+        if not choice and last_choice is not None:
+            return last_choice
 
         print("Invalid choice. Please try again.")

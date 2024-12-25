@@ -1,6 +1,7 @@
-# pdfSort
+## pdfSort
 
 sort student papers scanned into a big old pdf
+see source/README.txt for details on the structure of pdfSort
 
 ## bars_app (qrmake)
 

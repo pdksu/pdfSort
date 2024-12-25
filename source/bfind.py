@@ -87,7 +87,7 @@ def page_qr(img:Image, verbose = False):
 
 def page_no_qr(img:Image, verbose = False):
 #    imga = np.array(img)
-    return True, ("NOQR", None, None)
+    return True, (None, None, None)
 
 
 BUBBLE_HEAD =  {"student" : {"items" : {"ID" : {(i, 0) : i for i in range(10)},

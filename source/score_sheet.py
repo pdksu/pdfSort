@@ -12,7 +12,7 @@
 import argparse
 import cv2
 import io
-from PIL import ImageDraw, ImageFont
+from PIL import ImageDraw, ImageFont, Image
 import numpy as np
 import os
 from pandas import read_csv
@@ -23,7 +23,7 @@ from pathlib import Path
 from file_lists import list_from_file, files_to_csv
 from pdfsort_classes import Pdf_serve 
 from choices import display_choices
-
+from typing import Optional, Tuple
 
 # Define paths
 from config.config import *
@@ -74,13 +74,14 @@ def insert_image_to_pdf(image, pdf_file: str, offset: int = 0):
     pdf_reader = PyPDF2.PdfReader(pdf_file)
     added = 0
     for page_num in range(len(pdf_reader.pages)+1):
+        pass
         if page_num == offset:
             # Add our image
             pdf_writer.add_page(PyPDF2.PdfReader(img_byte_arr).pages[0])
-            added = 1
+            added += 1
         else:
             # Add existing PDF pages
-            pdf_writer.add_page(pdf_reader.pages[page_num - added])
+            pdf_writer.add_page(pdf_reader.pages[page_num - added]) 
 
     # Write the combined PDF
     with open(pdf_file, "wb") as f:
@@ -162,13 +163,17 @@ def getargs():
         prog='PDFsort',
         description='Sort scans of whole classes into individual portfolios for students.'
     )
-    parser.add_argument('-Q','--noQR',action='store_true')
+    parser.add_argument('-q','--noQR',action='store_true')
+    parser.add_argument('-a','--noAruco',action='store_true')
+    parser.add_argument('-s','--noScore',action='store_true')
     args = parser.parse_args()
     return args
 
-if __name__ == '__main__':
+def score_workflow():
     args = getargs()
     noQR = args.noQR if args.noQR else False
+    noAruco = args.noAruco if args.noAruco else False
+    noScore = args.noScore if args.noScore else False
     # --- load student list ------
     INTERACTIVE = True
     keepWithPrevious = True # flag to put pages without student ID's with the previously read student ID
@@ -178,7 +183,8 @@ if __name__ == '__main__':
         curr_dir = curr_dir.parent
         results_dir = curr_dir / Path("csv_out") 
     return_dir = curr_dir / Path("pdf_out") 
-    student_file = results_dir / Path("students_from_classroom.csv")
+#    student_file = results_dir / Path("students_from_classroom.csv")  # 2023 Clifton
+    student_file = curr_dir / Path("annual_setup/student_keys.csv")   # 2024 Montclair
     scan_dir = return_dir / Path("scans")
     pdf_suffix = "_MP1.pdf"
 
@@ -192,6 +198,7 @@ if __name__ == '__main__':
     scanneds = list_from_file(Path(scan_dir, "scans.csv"))
     scanned_work = Path(scan_dir,scanneds[-1])
     default_file = scanned_work.with_name(scanned_work.stem + "_unproc.pdf")
+    likely_student = None
     pdf_page_service = Pdf_serve(scanned_work, scale=5)
     aruco_reader = ArucoBubbleSheet(Q_ITEMS_DEFAULT)
 
@@ -201,13 +208,16 @@ if __name__ == '__main__':
     i = 0
     offset = 0
     MAX_PAGE_COUNT = 800
+    last_choice = None
     print("page: #/MAX: key, self, instructor")
-    for (page_title, qr_loc, _), page in pdf_page_service.next_qr_page(noQR):  # returns default page title for run which can be reset by user otherwise None
+    #  get page_title (from QR code) and page: PIL.Image.Image
+    for (page_title, qr_loc, _), page in pdf_page_service.next_qr_page(noQR):  # type: Tuple[Optional[Tuple[Optional[str], Optional[str], Optional[str]]], Image.Image]
         if i >= MAX_PAGE_COUNT:
             i += 1
             continue
-        if page_title:
-            offset = 0
+        if page_title is None and noQR:
+            page_title = "No QR Code"
+        if page_title and not noAruco:
             print(page_title)
             if page_title not in found_entries:
                 found_entries[page_title] = {}
@@ -219,7 +229,7 @@ if __name__ == '__main__':
             f_page = cv2.cvtColor(np.array(page), cv2.COLOR_BGR2GRAY)
             f_page = cv2.adaptiveThreshold(f_page, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 75, 2)
             f_page = cv2.dilate(f_page, np.ones((3, 3), np.uint8))
-            aruco_dict = aruco_reader.aruco_find(f_page)
+            aruco_dict = aruco_reader.aruco_find(f_page) if not noAruco else None
             if not aruco_dict:
                 aruco_dict = None
             else:
@@ -247,19 +257,29 @@ if __name__ == '__main__':
                 most_likely_p = min(which_student.p_val)
                 likely_student = which_student[which_student.p_val <= 10*most_likely_p]
                 try:
-                    likely_student = display_choices(likely_student, page, students, interactive=INTERACTIVE).iloc[0] # does nothing if only one choice
-                    if likely_student == 'DEFAULT':
+                    likely_student = display_choices(likely_student, page, students, interactive=INTERACTIVE, last_choice=last_choice)
+                    if likely_student.empty:
                         out_pdff = default_file
                         marked_page = page
                         continue
+                    try:
+                        if last_choice["pageId"] != likely_student["pageId"].values[0]:
+                            offset = 0
+                    except TypeError:
+                        offset = 0
+                    last_choice = likely_student.iloc[0:1]
+                    likely_student = likely_student.iloc[0]
                 except AttributeError:
                     continue
-                except ValueError: #triggered by if likely_student == 'DEFAULT'
-                    pass
+                except ValueError:
+                    continue
             try:
                 print(f'++{i+1}/{pdf_page_service.npages}: {student_key}, {likely_student[["First Name", "Last Name", "Section", "ID"]]}++')
             except TypeError:
-                continue 
+                continue
+            except UnboundLocalError:
+                pass
+
 
 # TODO: move get_values_for_prefix def out of loop
             def get_values_for_prefix(d: dict, prefix: str, default: str="_"):
@@ -285,5 +305,27 @@ if __name__ == '__main__':
             out_pdff = Path(return_dir,  likely_student["pageId"]+pdf_suffix)
         else:
             marked_page = page
+            out_pdff = default_file
+            try:
+                likely_student = students[["pageId","First Name","Last Name","Section", "ID"]].copy()
+            except KeyError:
+                likely_student = students[["pageId","First","Last","Section", ]].copy()
+            likely_student = display_choices(likely_student, page, students, interactive=INTERACTIVE, last_choice=last_choice)
+            if likely_student.empty:
+                out_pdff = default_file
+                marked_page = page
+            else:
+                try:
+                    if last_choice["pageId"].values[0] != likely_student["pageId"].values[0]:
+                        offset = 0
+                except TypeError:
+                    offset = 0
+                last_choice = likely_student.iloc[0:1]
+                likely_student = likely_student.iloc[0]
+                out_pdff = Path(return_dir,  likely_student["pageId"]+pdf_suffix)
+
         insert_image_to_pdf(marked_page, out_pdff, offset = offset) # if no QR code, just stick it where the last page went.
         offset += 1
+
+if __name__ == '__main__':
+    score_workflow()

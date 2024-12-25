@@ -13,6 +13,7 @@
 from PIL import Image
 import fitz #MuPDF
 from bfind import page_qr, page_no_qr
+from typing import Iterator, Tuple, Optional
 
 # Define paths
 from config.config import *
@@ -38,7 +39,7 @@ class Pdf_serve():
         self.default_page_set = False
         self.default_page = None
 
-    def next_qr_page(self, noQR = False):
+    def next_qr_page(self, noQR: bool = False) -> Iterator[Tuple[Optional[Tuple[Optional[str], Optional[str], Optional[str]]], Image.Image]]:
         scale_matrix = fitz.Matrix(self.scale, self.scale)
         while self.page_index < self.npages: # and (self.page_index < 10):
             qrc_success = False 
