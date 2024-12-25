@@ -1,4 +1,9 @@
 import sys
+import os
+import subprocess
+import signal
+from PIL import Image, ImageShow
+
 MAXCHOICES = 10
 
 # Platform-specific imports and functions
@@ -23,81 +28,114 @@ else:
         curses.endwin()
         return chr(key)
 
-def display_choices(likely_student, page, students, interactive=True, last_choice = None):
+class BackgroundViewer(ImageShow.MacViewer):
+    """Custom viewer that doesn't steal focus on macOS."""
+    
+    def __init__(self):
+        super().__init__()
+        self.current_process = None
+    
+    def get_command(self, file, **options):
+        """Use the -g flag to prevent focus stealing."""
+        return f"open -g -a Preview.app {file}"
+
+    def show_file(self, path, **options):
+        """Display given file and track the process."""
+        self.current_process = subprocess.Popen(['open', '-g', '-a', 'Preview.app', path])
+        return 1
+
+    def close(self):
+        """Close the Preview window."""
+        if self.current_process:
+            try:
+                subprocess.run(['osascript', '-e', 'tell application "Preview" to quit'])
+                self.current_process = None
+            except subprocess.SubprocessError:
+                pass
+
+# Register the background viewer at module import time
+if sys.platform.startswith('darwin'):
+    viewer = BackgroundViewer()
+    ImageShow.register(viewer, 0)
+
+def display_choices(likely_student, page: Image.Image, students, interactive=True, last_choice = None):
     if likely_student.shape[0] == 1:
         return likely_student
     elif not interactive: # without an operator, stack all the unclear results in one place
         return "DEFAULT"
 
     page.show()
+    try:
+        # Extract relevant column names
+        first_name_col = [col for col in students.columns if col.startswith('First')][0]  # Assuming there's only one column that starts with 'First'
+        last_name_col = [col for col in students.columns if col.startswith('Last')][0]  # Assuming there's only one column that starts with 'Last'
+        page_index_col = [col for col in students.columns if col.startswith('page')][0]  # Assuming there's only one column that starts with 'Last'
+        # Helper function to display choices
+        def show_choices(possible_choices, alternative):
+            for index, (_, student) in enumerate(possible_choices.iterrows(), 1):
+                # Printing only specific fields
+                print(f"({index}) {student[first_name_col]} {student[last_name_col]} {student[page_index_col]}")
+                if index > MAXCHOICES:
+                    break
+            print(alternative)
 
-    # Extract relevant column names
-    first_name_col = [col for col in students.columns if col.startswith('First')][0]  # Assuming there's only one column that starts with 'First'
-    last_name_col = [col for col in students.columns if col.startswith('Last')][0]  # Assuming there's only one column that starts with 'Last'
-    page_index_col = [col for col in students.columns if col.startswith('page')][0]  # Assuming there's only one column that starts with 'Last'
-    # Helper function to display choices
-    def show_choices(possible_choices, alternative):
-        for index, (_, student) in enumerate(possible_choices.iterrows(), 1):
-            # Printing only specific fields
-            print(f"({index}) {student[first_name_col]} {student[last_name_col]} {student[page_index_col]}")
-            if index > MAXCHOICES:
-                break
-        print(alternative)
+        # Initial display of all likely student choices
+        show_choices(likely_student, "(s) Spell")
 
-    # Initial display of all likely student choices
-    show_choices(likely_student, "(s) Spell")
+        # Variable to store the current substring of the name being spelled
+        current_string = ""
 
-    # Variable to store the current substring of the name being spelled
-    current_string = ""
+        first_name_col = [col for col in students.columns if col.startswith('First')][0]  # Assuming there's only one column that starts with 'First'
 
-    first_name_col = [col for col in students.columns if col.startswith('First')][0]  # Assuming there's only one column that starts with 'First'
+        # Collect user input until a valid choice is made
+        while True:
+            if likely_student.empty:
+                choice = "s"
+            else:
+                choice = input("Enter your choice: ")
 
-    # Collect user input until a valid choice is made
-    while True:
-        if likely_student.empty:
-            choice = "s"
-        else:
-            choice = input("Enter your choice: ")
+            if choice == 's':
+                print("Start typing the name [ESC to exit]...")
 
-        if choice == 's':
-            print("Start typing the name [ESC to exit]...")
+                current_string = ""
+                while True:
+                    # Get single key stroke
+                    letter = get_key()
+                    print(f"got {letter}, {ord(letter)}", flush=True)
 
-            current_string = ""
-            while True:
-                # Get single key stroke
-                letter = get_key()
-                print(f"got {letter}, {ord(letter)}", flush=True)
+                    # Use ESC key as exit mechanism, ASCII value for ESC is 27
+                    if ord(letter) == 27:
+                        return "DEFAULT"
 
-                # Use ESC key as exit mechanism, ASCII value for ESC is 27
-                if ord(letter) == 27:
-                    return "DEFAULT"
+                    current_string += letter
+                    print(f"current string = {current_string}", end='', flush=True)
 
-                current_string += letter
-                print(f"current string = {current_string}", end='', flush=True)
+                    # Filter students based on the current substring
+                    matching_students = students[students[first_name_col].str.lower().str.startswith(current_string.lower(), na=False)]
 
-                # Filter students based on the current substring
-                matching_students = students[students[first_name_col].str.lower().str.startswith(current_string.lower(), na=False)]
+                    if matching_students.empty:
+                        print("No matches found. Try again.")
+                        current_string = current_string[:-1]  # Remove the last letter
+                        continue
 
-                if matching_students.empty:
-                    print("No matches found. Try again.")
-                    current_string = current_string[:-1]  # Remove the last letter
-                    continue
+                    if matching_students.shape[0] < 5:
+                        print("")
+                        show_choices(matching_students, "")
+                        break  # Breaks out of the inner while loop
 
-                if matching_students.shape[0] < 5:
-                    print("")
-                    show_choices(matching_students, "")
-                    break  # Breaks out of the inner while loop
+                    print(f"{matching_students.shape[0]} matches found. Keep typing...")
 
-                print(f"{matching_students.shape[0]} matches found. Keep typing...")
+                likely_student = matching_students  # Reset the likely_student DataFrame
+                continue  # This continues the outer loop
 
-            likely_student = matching_students  # Reset the likely_student DataFrame
-            continue  # This continues the outer loop
+            if choice.isdigit() and 1 <= int(choice) <= likely_student.shape[0]:
+                # Return the chosen student
+                return likely_student.iloc[int(choice) - 1:int(choice)]
+            
+            if not choice and last_choice is not None:
+                return last_choice
 
-        if choice.isdigit() and 1 <= int(choice) <= likely_student.shape[0]:
-            # Return the chosen student
-            return likely_student.iloc[int(choice) - 1:int(choice)]
-        
-        if not choice and last_choice is not None:
-            return last_choice
-
-        print("Invalid choice. Please try again.")
+            print("Invalid choice. Please try again.")
+    finally:
+        if sys.platform.startswith('darwin'):
+            viewer.close()  # Close Preview when we're done
