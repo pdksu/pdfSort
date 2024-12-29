@@ -32,18 +32,14 @@ from config.config import *
 def annotate_image(img, text):
     # Open the image and get its size
     width, height = img.size
-    
     # Create a drawing context
     draw_obj = ImageDraw.Draw(img)
-    
     # Choose a font and size
     font = ImageFont.truetype("/Library/Fonts/Arial Unicode.ttf", 80)  # Adjust font path and size accordingly
-    
     # Calculate text width and height
     print(text)
     text_width = draw_obj.textlength(text=text, font=font)
     text_height = 140
-    
     # Define position to place the text at the bottom-center of the image
     x = (width - text_width) / 2
     y = height - 180  # 10 pixels padding from the bottom
@@ -186,7 +182,7 @@ def score_workflow():
 #    student_file = results_dir / Path("students_from_classroom.csv")  # 2023 Clifton
     student_file = curr_dir / Path("annual_setup/student_keys.csv")   # 2024 Montclair
     scan_dir = return_dir / Path("scans")
-    pdf_suffix = "_MP1.pdf"
+    pdf_suffix = "_MP2.pdf"
 
     students = read_csv(student_file)
     if 'pageId' not in students.columns:
@@ -196,7 +192,8 @@ def score_workflow():
     # ----- get ready to process .pdf file ----
     files_to_csv(Path(scan_dir)) # update list of scanned files
     scanneds = list_from_file(Path(scan_dir, "scans.csv"))
-    scanned_work = Path(scan_dir,scanneds[-1])
+    scanneds.sort(key=lambda x: os.path.getmtime(str(Path(scan_dir) / x)), reverse=True)
+    scanned_work = Path(scan_dir,scanneds[0])  # Take the newest file
     default_file = scanned_work.with_name(scanned_work.stem + "_unproc.pdf")
     likely_student = None
     pdf_page_service = Pdf_serve(scanned_work, scale=5)
