@@ -10,7 +10,7 @@ MAXCHOICES = 5
 def cursor_wrapper(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
-        if 'stdscr' not in kwargs:
+        if 'stdscr' not in kwargs and not sys.platform.startswith('win32'):
             stdscr = curses.initscr()
             return func(*args, **kwargs, stdscr=stdscr)
         else:
@@ -27,24 +27,13 @@ if sys.platform.startswith('win32'):
 else:
     import curses
 
-#    @cursor_wrapper
     def get_key(stdscr):
         """Read single keypress from UNIX console."""
- #       def _get_key(stdscr):
- #          stdscr = curses.initscr()
- #          curses.cbreak()
- #          stdscr.keypad(True)
- #          stdscr.nodelay(False)
-       #           stdscr.clear()
-#            stdscr.addstr(0, 10, "Press a key")
- #          stdscr.refresh()
         key = stdscr.getch()
-#        curses.endwin()
         if key in (curses.KEY_ENTER, ord('\n'), ord('\r')):
             return '\n'
         else:
             return chr(key)
-#        return curses.wrapper(_get_key)
 
 
 class BackgroundViewer(ImageShow.MacViewer):
