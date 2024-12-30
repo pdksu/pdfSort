@@ -107,6 +107,12 @@ class ArucoBubbleSheet:
         self.q_items = q_items
         self.aruco_dict = aruco_dict
 
+    def threshold(self, img: np.array):
+        return cv2.adaptiveThreshold(img, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 75, 2)
+
+    def dilate(self, img: np.array):
+        return cv2.dilate(img, np.ones((3, 3), np.uint8))
+
     def grid_from_rect(self, rect: np.array, nhoriz: int, nvert: int):
         gs = np.array([nhoriz, nvert])
 #        print('--grid--')
@@ -139,10 +145,12 @@ class ArucoBubbleSheet:
         print(f"orientation: angle list {180*angles/np.pi}. {angles.argsort()} | {rot_angle*180/np.pi}")
         return (180*rot_angle/np.pi, 1)
 
-    def aruco_find(self, image: Image, verbose: bool = False): # **DetectorParameters are DetectorParameters
+    def aruco_find(self, image: Image, verbose: bool = False, preprocess: list[str] = []): # **DetectorParameters are DetectorParameters
         """
         Find all aruco markers in the image.
         """
+        for p in preprocess:
+            image = getattr(self, p)(image)
         a_param = aruco.DetectorParameters()
         ad = aruco.ArucoDetector(aruco.getPredefinedDictionary(self.aruco_dict), a_param)
         (corners, markers, rejected) = ad.detectMarkers(np.array(image))
