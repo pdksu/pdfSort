@@ -10,7 +10,6 @@
 #    when done, .csv should be written.
 #
 import argparse
-import cv2
 import io
 from PIL import ImageDraw, ImageFont, Image
 import numpy as np
@@ -204,6 +203,8 @@ def score_workflow():
     found_entries = {}
     i = 0
     offset = 0
+    current_student = None
+    current_title = None
     MAX_PAGE_COUNT = 800
     last_choice = None
     print("page: #/MAX: key, self, instructor")
@@ -212,64 +213,33 @@ def score_workflow():
         if i >= MAX_PAGE_COUNT:
             i += 1
             continue
-        if page_title is None and noQR:
-            page_title = "No QR Code"
+        if page_title:
+            current_title = page_title
+        else:
+            if noQR:
+                current_title = "No QR Code"  # TODO: prompt user for title
+            else:
+                current_title = input("Enter title for page: ")
+                if not current_title or current_title == "":
+                    current_title = "DEFAULT"
+        print(page_title)
+        out_csvf = results_dir / Path(page_title+".csv")
+        found_entries[page_title] = {"file":out_csvf}
+        aruco_dict = aruco_reader.aruco_find(page, preprocess=["threshold", "dilate"]) if not noAruco else None
+#        if not os.path.exists(out_csvf):
+#            with open(out_csvf,"w") as f:
+#                f.write(",".join(["First","Last","Section","pageId","ID","Score","SelfA"])+"\n") 
+        if aruco_dict:
+            bubble_results, marked_page = aruco_reader.analyze_bubbles(page, ad = aruco_dict)
+            page = marked_page
+        else:
+            noAruco = True
+        student_info = identify_student(students, page, bubble_results, noAruco)
         if page_title and not noAruco:
-            print(page_title)
-            if page_title not in found_entries:
-                found_entries[page_title] = {}
-            out_csvf = results_dir / Path(page_title+".csv")
-            if not os.path.exists(out_csvf):
-                with open(out_csvf,"w") as f:
-                    f.write(",".join(["First","Last","Section","pageId","ID","Score","SelfA"])+"\n") 
             i += 1
-            f_page = cv2.cvtColor(np.array(page), cv2.COLOR_BGR2GRAY)
-            f_page = cv2.adaptiveThreshold(f_page, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 75, 2)
-            f_page = cv2.dilate(f_page, np.ones((3, 3), np.uint8))
-            aruco_dict = aruco_reader.aruco_find(f_page) if not noAruco else None
             if not aruco_dict:
                 aruco_dict = None
             else:
-                bubble_results, marked_page = aruco_reader.analyze_bubbles(page, ad = aruco_dict)
-                try:
-                    student = bubble_results['student']
-                    student_key = darkest_bubble_str(student['FIRST_INIT']) + darkest_bubble_str(student['LAST_INIT']) +\
-                            darkest_bubble_str(student['ID']) + darkest_bubble_str(student['SECTION'])
-                    student["ID"] = {str(k):v for k,v in student["ID"].items()}
-                    student["SECTION"] = {str(k):v for k,v in student["SECTION"].items()}
-                except (TypeError, KeyError):
-                    if not keepWithPrevious:
-                        reprocess_page_list.append(i)
-                        marked_page.show()
-                        out_pdff = default_file
-                        try:
-                            print(f":REPROCESS: {i}/{pdf_page_service.npages}: ({page.width}, {page.height}) {page_title[0]} {[k for k in aruco_dict.keys()]} {bubble_results} ::::::")
-                        except:
-                            pass
-                        continue
-                which_student = students[["pageId","First Name","Last Name","Section", "ID"]].copy()
-                which_student["p_val"] = 1.0
-                which_student.p_val = which_student.apply(lambda row: update_p_val(row, student, col_name="pageId"), axis=1)
-                which_student.p_val = which_student.apply(lambda row: row['p_val'] if row['pageId'] not in found_entries[page_title] else row['p_val']*100, axis=1) # try to avoid duplicate pages for the same student
-                most_likely_p = min(which_student.p_val)
-                likely_student = which_student[which_student.p_val <= 10*most_likely_p]
-                try:
-                    likely_student = display_choices(likely_student, page, students, interactive=INTERACTIVE, last_choice=last_choice)
-                    if likely_student.empty:
-                        out_pdff = default_file
-                        marked_page = page
-                        continue
-                    try:
-                        if last_choice["pageId"] != likely_student["pageId"].values[0]:
-                            offset = 0
-                    except TypeError:
-                        offset = 0
-                    last_choice = likely_student.iloc[0:1]
-                    likely_student = likely_student.iloc[0]
-                except AttributeError:
-                    continue
-                except ValueError:
-                    continue
             try:
                 print(f'++{i+1}/{pdf_page_service.npages}: {student_key}, {likely_student[["First Name", "Last Name", "Section", "ID"]]}++')
             except TypeError:
@@ -277,8 +247,6 @@ def score_workflow():
             except UnboundLocalError:
                 pass
 
-
-# TODO: move get_values_for_prefix def out of loop
             def get_values_for_prefix(d: dict, prefix: str, default: str="_"):
                 """Retrieve the values of all keys that start with a given prefix."""
                 try:
@@ -324,5 +292,37 @@ def score_workflow():
         insert_image_to_pdf(marked_page, out_pdff, offset = offset) # if no QR code, just stick it where the last page went.
         offset += 1
 
+def identify_student(students, page, bubble_results, noAruco):
+    try:
+        student = bubble_results['student']
+        student["ID"] = {str(k):v for k,v in student["ID"].items()}
+        student["SECTION"] = {str(k):v for k,v in student["SECTION"].items()}
+    except (TypeError, KeyError):
+                pass
+    which_student = students[["pageId","First Name","Last Name","Section", "ID"]].copy()
+    which_student["p_val"] = 1.0
+    which_student.p_val = which_student.apply(lambda row: update_p_val(row, student, col_name="pageId"), axis=1)
+    which_student.p_val = which_student.apply(lambda row: row['p_val'] if row['pageId'] not in found_entries[page_title] else row['p_val']*100, axis=1) # try to avoid duplicate pages for the same student
+    most_likely_p = min(which_student.p_val)
+    likely_student = which_student[which_student.p_val <= 10*most_likely_p]
+    try:
+        likely_student = display_choices(likely_student, page, students, interactive=INTERACTIVE, last_choice=last_choice)
+        if likely_student.empty:
+            out_pdff = default_file
+            marked_page = page
+            continue
+        try:
+            if last_choice["pageId"] != likely_student["pageId"].values[0]:
+                offset = 0
+        except TypeError:
+            offset = 0
+        last_choice = likely_student.iloc[0:1]
+        likely_student = likely_student.iloc[0]
+    except AttributeError:
+        continue
+    except ValueError:
+        continue
+    # Logic to identify student using Aruco bubbles
+    pass
 if __name__ == '__main__':
     score_workflow()
