@@ -175,16 +175,6 @@ def score_workflow():
 #    student_file = results_dir / Path("students_from_classroom.csv")  # 2023 Clifton
     student_file = curr_dir / Path("annual_setup/student_keys.csv")   # 2024 Montclair
     scan_dir = return_dir / Path("scans")
-
-    students = read_csv(student_file)
-    if 'pageId' not in students.columns:
-        raise KeyError(f"Missing Column: pageId from file {student_file}")
-    student_cols = {"First Name": list(filter(lambda x: x.startswith("First"), students.columns))[0],
-                    "Last Name": list(filter(lambda x: x.startswith("Last"), students.columns))[0],
-                    "Section": list(filter(lambda x: x.startswith("Section"), students.columns))[0],
-                    "ID": list(filter(lambda x: x.startswith("Student"), students.columns))[0]}
-    print(students.columns)
-
     # ----- get ready to process .pdf file ----
     files_to_csv(Path(scan_dir)) # update list of scanned files
     scanneds = list_from_file(Path(scan_dir, "scans.csv"))
@@ -193,15 +183,21 @@ def score_workflow():
     pdf_page_service = Pdf_serve(scanned_work, scale=5)
     aruco_reader = ArucoBubbleSheet(Q_ITEMS_DEFAULT)
 
+    students = read_csv(student_file)
+    if 'pageId' not in students.columns:
+        raise KeyError(f"Missing Column: pageId from file {student_file}")
+    student_cols = {"First Name": list(filter(lambda x: x.startswith("First"), students.columns))[0],
+                    "Last Name": list(filter(lambda x: x.startswith("Last"), students.columns))[0],
+                    "Section": list(filter(lambda x: x.startswith("Section"), students.columns))[0],
+                    "ID": list(filter(lambda x: x.startswith("Student"), students.columns))[0]}
+
     # ------ page loop --------
-    found_entries = {}
-    offset, current_title, MAX_PAGE_COUNT, last_choice = 0, None, 800, None
-    print("page: #/MAX: key, self, instructor")
+    found_entries, offset, current_title, MAX_PAGE_COUNT, last_choice = {},0, None, 800, None
     #  get page_title (from QR code) and page: PIL.Image.Image
     for i,(page_data, page) in enumerate(pdf_page_service.next_qr_page(noQR)):  # type: Tuple[Optional[Tuple[Optional[str], Optional[str], Optional[str]]], Image.Image]
         page_title, qr_loc, _ = page_data
         if i >= MAX_PAGE_COUNT:
-            continue
+            return
         if page_title:
             current_title = page_title
         else:
@@ -218,16 +214,16 @@ def score_workflow():
                 f.write(",".join(["First","Last","Section","pageId","ID","Score","SelfA"])+"\n") 
         found_entries[page_title] = {"file":out_csvf}
 
-        if not noAruco:
-            aruco_dict = aruco_reader.aruco_find(page, preprocess=["threshold", "dilate"])
+        if noAruco:
+            bubble_results = None
+        else:
+            aruco_dict = aruco_reader.aruco_find(page, preprocess=["threshold", "dilate"]) # find and read locations of ARUCO codes
             if aruco_dict:
                 bubble_results, marked_page = aruco_reader.analyze_bubbles(page, ad = aruco_dict)
                 page = marked_page
             else:
                 noAruco = True
                 bubble_results = None
-        else:
-            bubble_results = None
 
         student_info = identify_student(students, page, bubble_results, noAruco, interactive=interactive, last_choice=last_choice, found_entries=found_entries, page_title=page_title)
         out_pdff = Path(return_dir,  student_info["pageId"]+pdf_suffix)
