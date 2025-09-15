@@ -11,7 +11,8 @@
 #
 import argparse
 import io
-from PIL import ImageDraw, ImageFont, Image
+import sys
+from PIL import ImageDraw, ImageFont, Image, ImageShow
 import numpy as np
 import os
 from pandas import read_csv
@@ -21,12 +22,15 @@ from bfind import ArucoBubbleSheet
 from pathlib import Path
 from file_lists import list_from_file, files_to_csv
 from pdfsort_classes import Pdf_serve 
-from choices import display_choices
-from typing import Optional, Tuple
+from choices import display_choices, viewer
+import subprocess
 
 # Define paths
 from config.config import *
 font_path = os.getenv('FONT_PATH', '/Library/Fonts/Arial Unicode.ttf')  # Default path if not set
+from config.config import Config
+
+config = Config()
 
 
 def annotate_image(img, text):
@@ -56,7 +60,8 @@ def annotate_image(img, text):
 def insert_image_to_pdf(image, pdf_file: str, offset: int = 0):
     # Convert PIL image to PDF
     img_byte_arr = io.BytesIO()
-    image.save(img_byte_arr, format='PDF')
+    dpi = image.width / 8.5  # Assuming 8.5 inches width for standard letter size
+    image.save(img_byte_arr, format='PDF', dpi=(dpi, dpi))
     img_byte_arr.seek(0)
 
     # Check if PDF exists
@@ -149,7 +154,7 @@ def update_p_val(row, search_data: dict, col_name:str="pageId"):
             updated_p *= max(0.01, search_data[key][char])
     return updated_p
 
-DEFAULT_PDF_SUFFIX = "_MP2.pdf"
+DEFAULT_PDF_SUFFIX = "_2526MP1.pdf"
 def getargs():
     parser = argparse.ArgumentParser(
         prog='PDFsort',
@@ -171,13 +176,13 @@ def score_workflow():
     if not Path(results_dir).exists():
         curr_dir = curr_dir.parent
         results_dir = curr_dir / Path("csv_out") 
-    return_dir = curr_dir / Path("pdf_out") 
+    return_dir =  config.processed_dir # curr_dir / Path("pdf_out") 
 #    student_file = results_dir / Path("students_from_classroom.csv")  # 2023 Clifton
     student_file = curr_dir / Path("annual_setup/student_keys.csv")   # 2024 Montclair
-    scan_dir = return_dir / Path("scans")
+    scan_dir =  config.scan_dir # return_dir / Path("scans")
     # ----- get ready to process .pdf file ----
     files_to_csv(Path(scan_dir)) # update list of scanned files
-    scanneds = list_from_file(Path(scan_dir, "scans.csv"))
+    scanneds = list_from_file(Path(scan_dir) / "scans.csv")
     scanneds.sort(key=lambda x: os.path.getmtime(str(Path(scan_dir) / x)), reverse=True)
     scanned_work = Path(scan_dir,scanneds[0])  # Take the newest file
     pdf_page_service = Pdf_serve(scanned_work, scale=5)
@@ -186,10 +191,12 @@ def score_workflow():
     students = read_csv(student_file)
     if 'pageId' not in students.columns:
         raise KeyError(f"Missing Column: pageId from file {student_file}")
-    student_cols = {"First Name": list(filter(lambda x: x.startswith("First"), students.columns))[0],
-                    "Last Name": list(filter(lambda x: x.startswith("Last"), students.columns))[0],
-                    "Section": list(filter(lambda x: x.startswith("Section"), students.columns))[0],
-                    "ID": list(filter(lambda x: x.startswith("Student"), students.columns))[0]}
+    print(f"students.columns = {students.columns}.\ntype={type(students.columns)}")
+    cnames = list(students.columns)
+    student_cols = {"First Name": list(filter(lambda x: x.startswith("First"), cnames))[0],
+                    "Last Name": list(filter(lambda x: x.startswith("Last"), cnames))[0],
+                    "Section": list(filter(lambda x: x.startswith("Section"), cnames))[0],
+                    "ID": list(filter(lambda x: x.startswith("Student"), cnames))[0]}
 
     # ------ page loop --------
     found_entries, offset, current_title, MAX_PAGE_COUNT, last_choice = {},0, None, 800, None
@@ -225,10 +232,17 @@ def score_workflow():
                 noAruco = True
                 bubble_results = None
 
-        student_info = identify_student(students, page, bubble_results, noAruco, interactive=interactive, last_choice=last_choice, found_entries=found_entries, page_title=page_title)
-        out_pdff = Path(return_dir,  student_info["pageId"]+pdf_suffix)
+        student_info = identify_student(students, page, bubble_results, noAruco, interactive=interactive, last_choice=last_choice, found_entries=found_entries, page_title=page_title, noScore = noScore)
         if not noScore:
             scores = score_page(bubble_results)
+            if sys.platform.startswith('darwin'):
+                viewer.close()  # Close Preview when we're done
+        else:
+            scores = {"assessment":"", "self_assessment":""}
+        out_pdff = Path(return_dir,  student_info["pageId"]+pdf_suffix)
+        #if not noScore:
+        #    scores = score_page(bubble_results)
+        if not noScore:
             outstr = f'{student_info[student_cols["First Name"]]}, {student_info[student_cols["Last Name"]]}, {student_info[student_cols["Section"]]}, {student_info["pageId"]}, {student_info[student_cols["ID"]]}, {scores["assessment"]}, {scores["self_assessment"]}'
         else:
             outstr = f'{student_info[student_cols["First Name"]]}, {student_info[student_cols["Last Name"]]}, {student_info[student_cols["Section"]]}, {student_info["pageId"]}, {student_info[student_cols["ID"]]}, , '
@@ -236,12 +250,12 @@ def score_workflow():
             print(outstr)
             f.write(outstr+"\n")
         marked_page = annotate_image(page, outstr)
-        offset = offset + 1 if last_choice is not None and student_info[student_cols["ID"]] == last_choice[student_cols["ID"]] else 0
+        offset = offset + 1 if last_choice is not None and student_info[student_cols["ID"]] == last_choice[student_cols["ID"]] else 1
         insert_image_to_pdf(marked_page, out_pdff, offset = offset) # if no QR code, just stick it where the last page went.
         last_choice = student_info
 
 
-def identify_student(students, page, bubble_results, noAruco,  found_entries, page_title, interactive=True, last_choice=None):
+def identify_student(students, page, bubble_results, noAruco,  found_entries, page_title, interactive=True, last_choice=None, noScore=False):
     if not noAruco:
         try:
             student = bubble_results['student']
@@ -258,7 +272,7 @@ def identify_student(students, page, bubble_results, noAruco,  found_entries, pa
     else:
         likely_student = students.copy()
     try:
-        likely_student = display_choices(likely_student, page, students, interactive=interactive, last_choice=last_choice)
+        likely_student = display_choices(likely_student, page, students, interactive=interactive, last_choice=last_choice, kill_viewer=noScore)
         if likely_student.empty:
             likely_student = last_choice
         try:
@@ -288,7 +302,10 @@ def score_page(bubble_results):
         self_assessment_str = ", ".join(get_values_for_prefix(results, "self_assessment"))
         return {"assessment":assessment_str, "self_assessment":self_assessment_str}
     else:
-        assessment_str = input("Enter assessment score: ")
+        # Use get_string_input from choices to collect assessment score
+        from choices import get_string_input
+        assessment_str = get_string_input("Enter assessment score: ")
+        print(f"score = {assessment_str}")
         return {"assessment":assessment_str, "self_assessment":""}
 
 if __name__ == '__main__':

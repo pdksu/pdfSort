@@ -16,6 +16,7 @@ def cursor_wrapper(func):
         else:
             return func(*args, **kwargs)
     return wrapper
+
 # Platform-specific imports and functions
 if sys.platform.startswith('win32'):
     import msvcrt
@@ -65,7 +66,7 @@ if sys.platform.startswith('darwin'):
     ImageShow.register(viewer, 0)
 
 @cursor_wrapper
-def display_choices(likely_student, page: Image.Image, students, interactive=True, last_choice = None, recursive=False, stdscr=None ):
+def display_choices(likely_student, page: Image.Image, students, interactive=True, last_choice = None, recursive=False, stdscr=None , kill_viewer=True):
         if likely_student.shape[0] == 1:
             return likely_student
         elif not interactive: # without an operator, stack all the unclear results in one place
@@ -77,15 +78,18 @@ def display_choices(likely_student, page: Image.Image, students, interactive=Tru
             first_name_col = [col for col in students.columns if col.lower().startswith('first')][0]  # Assuming there's only one column that starts with 'First'
             last_name_col = [col for col in students.columns if col.lower().startswith('last')][0]  # Assuming there's only one column that starts with 'Last'
             page_index_col = [col for col in students.columns if col.lower().startswith('page')][0]  # Assuming there's only one column that starts with 'Last'
-            id_col = [col for col in students.columns if col == 'ID' or col == 'Student.Id'][0]  # Hard coded, maybe there's something simpler that doesn't overlap with pageId
+            id_col = [col for col in students.columns if col == 'ID' or col == 'StudentId'][0]  # Hard coded, maybe there's something simpler that doesn't overlap with pageId
             # Helper function to display choices
             def show_choices(possible_choices, alternative):
-                for index, (_, student) in enumerate(possible_choices.iterrows(), 1):
+                if len(possible_choices) <= MAXCHOICES:
+                  for index, (_, student) in enumerate(possible_choices.iterrows(), 1):
                     # Printing only specific fields
                     print(f"({index}) {student[first_name_col]} {student[last_name_col]} {student[page_index_col]}\r", flush=True)
                     if index > MAXCHOICES:
                         break
-                print(alternative+"\r", flush=True)
+                  print(alternative+"\r", flush=True)
+                else:
+                    print(f"TOO MANY, {alternative}\r", flush=True)
             if likely_student.empty:
                 likely_student = [last_choice] + students.copy() if last_choice is not None else students.copy()
             # Variable to store the current substring of the name being spelled
@@ -117,8 +121,7 @@ def display_choices(likely_student, page: Image.Image, students, interactive=Tru
                     if matching_students.shape[0] == 1: # only one choice
                         return matching_students.iloc[0:1]
                     if matching_students.shape[0] < 5:
-                        show_choices(matching_students, "your list")
-                        continue
+                        return display_choices(matching_students, page=page, students=students, last_choice=last_choice, interactive=True, recursive=True)
                     print(f"Still {matching_students.shape[0]} matches. Keep typing to narrow list...\r", flush=True)
                     likely_student = matching_students  # Reset the likely_student DataFrame
                 elif choice.isdigit() and 1 <= int(choice) <= likely_student.shape[0]:
@@ -131,5 +134,23 @@ def display_choices(likely_student, page: Image.Image, students, interactive=Tru
                 else:
                     print("Invalid choice. Please try again.\r", flush=True)
         finally:
-            if not recursive and sys.platform.startswith('darwin'):
+            if kill_viewer and not recursive and sys.platform.startswith('darwin'):
                 viewer.close()  # Close Preview when we're done
+
+@cursor_wrapper
+def get_string_input(prompt, stdscr=None):
+    print(prompt, end='', flush=True)
+    chars = []
+    while True:
+        ch = get_key(stdscr)
+        if ch in ('\n', '\r'):
+            break
+        elif ch in ('\b', '\x7f'):
+            if chars:
+                chars.pop()
+                print('\b \b', end='', flush=True)
+        else:
+            chars.append(ch)
+            print(ch, end='', flush=True)
+    print()
+    return ''.join(chars)
