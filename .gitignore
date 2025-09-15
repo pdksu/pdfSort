@@ -169,6 +169,9 @@ source/*.jpg
 source/*.png
 source/*.pdf
 source/*.csv
+source/test_images/*.png
+source/test_images/*.pdf
+source/test_images/*.jpg
 pdf_out/*
 csv_out/*
 test*.py
