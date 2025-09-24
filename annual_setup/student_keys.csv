@@ -36,6 +36,9 @@ StudentId,LastName,FirstName,Email,short_code,Section,pageId
 314,Kowal,Diana,dkowal26@mpsdnj.us,DK_314,3,314_Kowal_Diana
 315,Whitman-Romanow,Stephen,swhitman-romanow26@mpsdnj.us,SW_315,3,315_Whitman-Romanow_Stephen
 316,Yance,Ian,iyance26@mpsdnj.us,IY_316,3,316_Yance_Ian
+317,Unseth,John,junseth26@mpsdnj.us,JU_317,3,317_Unseth_John
+318,Belizaire,Marc,mbelizaire26@mpsdnj.us,MB_318,3,318_Belizaire_Marc
+319,Nichols,Grace,gnichols26@mpsdnj.us,GN_319,3,319_Nichols_Grace
 601,Batres,Sebastian,sbatres26@mpsdnj.us,SB_601,6,601_Batres_Sebastian
 602,Chornyi,Denys,dchornyi26@mpsdnj.us,DC_602,6,602_Chornyi_Denys
 603,Dunnemann,Ashley,adunnemann26@mpsdnj.us,AD_603,6,603_Dunnemann_Ashley
@@ -74,3 +77,4 @@ StudentId,LastName,FirstName,Email,short_code,Section,pageId
 824,Thompson,James,jthompson26@mpsdnj.us,JT_824,8,824_Thompson_James
 825,Vanco,Ronan,rvanco27@mpsdnj.us,RV_825,8,825_Vanco_Ronan
 826,Wilson,Finnley,fwilson26@mpsdnj.us,FW_826,8,826_Wilson_Finnley
+827,Bakos,Alex,abakos26@mpsdnj.us,AB_827,8,827_Bakos_Alex
