@@ -96,9 +96,9 @@ def display_choices(likely_student, page: Image.Image, students, interactive=Tru
             current_string = ""
             # Initial display of all likely student choices
             print("SHOWING CHOICES\r", flush=True)
-            show_choices(likely_student, "(a-z) to spell, - to start over, # to select\r")
+            show_choices(likely_student, "(a-z) to spell, - to start over, # to select, / to skip\r")
             # Collect user input until a valid choice is made
-            print("Choice (Enter to keep the last choice, - to start over, a-z to spell):\r", flush=True)
+            print("Choice (Enter to keep the last choice, - to start over, a-z to spell, / to skip):\r", flush=True)
             while True:
                 choice = get_key(stdscr)
                 if choice.isalpha():
@@ -131,6 +131,8 @@ def display_choices(likely_student, page: Image.Image, students, interactive=Tru
                     return display_choices(likely_student=likely_student, page=page, students=students, last_choice=last_choice, interactive=True, recursive=True)
                 elif choice == '\n' or (not choice and last_choice is not None):
                     return last_choice
+                elif choice == '/': # skip page
+                    return 'SKIP'
                 else:
                     print("Invalid choice. Please try again.\r", flush=True)
         finally:

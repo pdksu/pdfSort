@@ -233,6 +233,9 @@ def score_workflow():
                 bubble_results = None
 
         student_info = identify_student(students, page, bubble_results, noAruco, interactive=interactive, last_choice=last_choice, found_entries=found_entries, page_title=page_title, noScore = noScore)
+        if type(student_info) == str and student_info == 'SKIP':
+            print("Skipping page.")
+            continue
         if not noScore:
             scores = score_page(bubble_results)
             if sys.platform.startswith('darwin'):
@@ -275,6 +278,9 @@ def identify_student(students, page, bubble_results, noAruco,  found_entries, pa
         likely_student = display_choices(likely_student, page, students, interactive=interactive, last_choice=last_choice, kill_viewer=noScore)
         if likely_student.empty:
             likely_student = last_choice
+#        elif likely_student == "SKIP":
+#            print("Skipping page.")
+#            return 'SKIP'
         try:
             if last_choice["pageId"] != likely_student["pageId"].values[0]:
                 offset = 0
