@@ -24,6 +24,7 @@ from file_lists import list_from_file, files_to_csv
 from pdfsort_classes import Pdf_serve 
 from choices import display_choices, viewer
 import subprocess
+from student_sync import get_student_file_path
 
 # Define paths
 from config.config import *
@@ -176,10 +177,11 @@ def score_workflow():
     if not Path(results_dir).exists():
         curr_dir = curr_dir.parent
         results_dir = curr_dir / Path("csv_out") 
-    return_dir =  config.processed_dir # curr_dir / Path("pdf_out") 
+    return_dir = curr_dir / Path("pdf_out") 
 #    student_file = results_dir / Path("students_from_classroom.csv")  # 2023 Clifton
-    student_file = curr_dir / Path("annual_setup/student_keys.csv")   # 2024 Montclair
-    scan_dir =  config.scan_dir # return_dir / Path("scans")
+#    student_file = curr_dir / Path("annual_setup/student_keys.csv")   # 2024 Montclair
+    student_file = get_student_file_path()  # Automatically syncs from OneDrive
+    scan_dir = return_dir / Path("scans")
     # ----- get ready to process .pdf file ----
     files_to_csv(Path(scan_dir)) # update list of scanned files
     scanneds = list_from_file(Path(scan_dir) / "scans.csv")
