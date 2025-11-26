@@ -74,16 +74,20 @@ def insert_image_to_pdf(image, pdf_file: str, offset: int = 0):
     # If PDF exists, insert the image as page # offset (from 0) page
     pdf_writer = PyPDF2.PdfWriter()
     pdf_reader = PyPDF2.PdfReader(pdf_file)
-    added = 0
-    for page_num in range(len(pdf_reader.pages)+1):
-        pass
+    new_page = PyPDF2.PdfReader(img_byte_arr).pages[0]
+    
+    # Insert at the specified offset
+    num_existing_pages = len(pdf_reader.pages)
+    for page_num in range(num_existing_pages):
         if page_num == offset:
-            # Add our image
-            pdf_writer.add_page(PyPDF2.PdfReader(img_byte_arr).pages[0])
-            added += 1
-        else:
-            # Add existing PDF pages
-            pdf_writer.add_page(pdf_reader.pages[page_num - added]) 
+            # Add our new image page
+            pdf_writer.add_page(new_page)
+        # Add existing page
+        pdf_writer.add_page(pdf_reader.pages[page_num])
+    
+    # If offset is beyond the end, append the new page
+    if offset >= num_existing_pages:
+        pdf_writer.add_page(new_page)
 
     # Write the combined PDF
     with open(pdf_file, "wb") as f:
@@ -155,7 +159,7 @@ def update_p_val(row, search_data: dict, col_name:str="pageId"):
             updated_p *= max(0.01, search_data[key][char])
     return updated_p
 
-DEFAULT_PDF_SUFFIX = "_2526MP1.pdf"
+DEFAULT_PDF_SUFFIX = "_2526MP2.pdf"
 def getargs():
     parser = argparse.ArgumentParser(
         prog='PDFsort',
@@ -174,14 +178,17 @@ def score_workflow():
     # --- file locations------
     curr_dir = Path().absolute()
     results_dir = curr_dir / Path("csv_out") 
+    results_dir = config.scan_dir
     if not Path(results_dir).exists():
         curr_dir = curr_dir.parent
         results_dir = curr_dir / Path("csv_out") 
     return_dir = curr_dir / Path("pdf_out") 
+    return_dir = config.processed_dir
 #    student_file = results_dir / Path("students_from_classroom.csv")  # 2023 Clifton
 #    student_file = curr_dir / Path("annual_setup/student_keys.csv")   # 2024 Montclair
     student_file = get_student_file_path()  # Automatically syncs from OneDrive
     scan_dir = return_dir / Path("scans")
+    scan_dir = config.scan_dir
     # ----- get ready to process .pdf file ----
     files_to_csv(Path(scan_dir)) # update list of scanned files
     scanneds = list_from_file(Path(scan_dir) / "scans.csv")
@@ -217,7 +224,10 @@ def score_workflow():
                 if not current_title or current_title == "":
                     current_title = "DEFAULT"
         print(current_title)
-        out_csvf = results_dir / Path(current_title+".csv")
+        if 'drpdk.com' in current_title: # TODO: either make an API call to get the file root or read the file root from the dbase
+            out_csvf = scan_dir / Path("default_scores.csv")
+        else:
+            out_csvf = results_dir / Path(current_title+".csv")
         if not os.path.exists(out_csvf):
             with open(out_csvf,"w") as f:
                 f.write(",".join(["First","Last","Section","pageId","ID","Score","SelfA"])+"\n") 
