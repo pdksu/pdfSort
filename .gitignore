@@ -180,3 +180,8 @@ temp*.py
 */temp*.py
 
 .DS_Store
+
+# Student data cache (synced from OneDrive)
+annual_setup/.student_keys_cache.csv
+annual_setup/student_keys.csv.backup
+annual_setup/student_keys.csv
